@@ -11,16 +11,23 @@ export default function ResolutionDashboard() {
 
     setIsLoading(true)
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/resolutions`, {
+      const apiUrl = `http://localhost:3000/api/resolutions`
+      console.log('Adding resolution to:', apiUrl)
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newResolution })
       })
       
+      console.log('Response status:', response.status)
       if (response.ok) {
         const data = await response.json()
+        console.log('Added resolution:', data)
         setResolutions([...resolutions, data])
         setNewResolution('')
+      } else {
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
       }
     } catch (error) {
       console.error('Failed to add resolution:', error)
@@ -40,17 +47,16 @@ export default function ResolutionDashboard() {
       {/* Input Section */}
       <section className="bg-slate-800/50 border border-purple-500/20 rounded-lg p-6 backdrop-blur-sm">
         <label className="block text-sm font-medium text-purple-200 mb-3">Add a New Resolution</label>
-        <div className="flex gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); handleAddResolution(); }} className="flex gap-2">
           <input
             type="text"
             value={newResolution}
             onChange={(e) => setNewResolution(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAddResolution()}
             placeholder="e.g., Read one book per month..."
             className="flex-1 bg-slate-700/50 border border-purple-500/30 rounded-lg px-4 py-2 text-white placeholder-purple-300/50 focus:outline-none focus:border-purple-500 transition"
           />
           <button
-            onClick={handleAddResolution}
+            type="submit"
             disabled={isLoading}
             className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition"
           >
@@ -59,7 +65,7 @@ export default function ResolutionDashboard() {
               Add
             </>}
           </button>
-        </div>
+        </form>
       </section>
 
       {/* Resolutions List */}

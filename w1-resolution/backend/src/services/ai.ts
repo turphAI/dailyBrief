@@ -1,10 +1,12 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { Anthropic } from '@anthropic-ai/sdk'
 
-const client = new Anthropic()
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+})
 
 export async function analyzeResolutionWithClaude(text: string): Promise<string> {
   try {
-    const message = await client.messages.create({
+    const message = await (client.beta.messages as any).create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1024,
       messages: [

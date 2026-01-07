@@ -25,8 +25,18 @@ router.post('/', async (req: Request, res: Response) => {
 
     const id = uuidv4()
     
+    console.log(`Creating resolution: "${title}"`)
+    
     // Get AI analysis
-    const analysis = await analyzeResolutionWithClaude(title)
+    let analysis = ''
+    try {
+      analysis = await analyzeResolutionWithClaude(title)
+      console.log(`AI Analysis received: ${analysis.substring(0, 100)}...`)
+    } catch (aiError) {
+      console.error('AI Analysis failed:', aiError)
+      // Continue without AI for now
+      analysis = 'AI analysis temporarily unavailable'
+    }
 
     const resolution = {
       id,
@@ -37,10 +47,11 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     resolutions.set(id, resolution)
+    console.log(`Resolution saved with ID: ${id}`)
     res.status(201).json(resolution)
   } catch (error) {
     console.error('Error creating resolution:', error)
-    res.status(500).json({ error: 'Failed to create resolution' })
+    res.status(500).json({ error: 'Failed to create resolution', details: (error as Error).message })
   }
 })
 

@@ -14,11 +14,6 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
-    "@radix-ui/react-dialog": "^1.1.1",
-    "@radix-ui/react-slot": "^2.0.2",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.0.0",
-    "tailwind-merge": "^2.2.0",
     "lucide-react": "^0.292.0",
     "axios": "^1.6.0"
   },
