@@ -1,118 +1,68 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-// Services are available in the uploaded repo at this path
-import { handleChatMessage } from '../w1-resolution/backend/dist/services/chat.js'
-
-// Global state for this function instance
-// NOTE: This resets on redeploy or when function scales
-// For production persistence, use Vercel KV or a database
+// Global state
 const conversations = new Map<string, any>()
 const resolutions = new Map<string, any>()
 
-/**
- * Chat API Handler - POST /api/chat
- * Receives a message and returns Claude's response with resolution updates
- */
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader(
-    'Access-Control-Allow-Methods',
-    'GET,OPTIONS,PATCH,DELETE,POST,PUT'
-  )
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  )
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    res.status(200).end()
-    return
+    return res.status(200).end()
   }
 
-  // Handle POST requests
   if (req.method === 'POST') {
     try {
       const { message, conversationId } = req.body
 
-      // Validate input
-      if (!message || typeof message !== 'string') {
-        return res.status(400).json({
-          error: 'Missing or invalid message',
-          resolutions: Array.from(resolutions.values()).filter(
-            (r) => r.status === 'active'
-          )
-        })
+      if (!message) {
+        return res.status(400).json({ error: 'No message' })
       }
 
-      // Get or create conversation
-      let convId = conversationId || 'default-' + Date.now()
+      let convId = conversationId || 'default'
       if (!conversations.has(convId)) {
         conversations.set(convId, { messages: [] })
       }
 
-      const conversation = conversations.get(convId)!
+      const conv = conversations.get(convId)
+      conv.messages.push({ role: 'user', content: message })
 
-      // Add user message to conversation history
-      conversation.messages.push({
-        role: 'user',
-        content: message
-      })
-
-      console.log(`[Chat] Processing message for conversation: ${convId}`)
-
-      // Get Claude's response with tools
-      const response = await handleChatMessage(
-        conversation.messages,
-        resolutions
-      )
-
-      // Add assistant response to conversation history
-      conversation.messages.push({
-        role: 'assistant',
-        content: response.text
-      })
-
-      // Get current list of active resolutions
-      const allResolutions = Array.from(resolutions.values()).filter(
-        (r) => r.status === 'active'
-      )
-
-      console.log(
-        `[Chat] Response sent. Tools used: ${response.toolsUsed.join(', ')}`
-      )
-      console.log(`[Chat] Active resolutions: ${allResolutions.length}`)
-
-      // Return response
-      return res.status(200).json({
-        response: response.text,
-        conversationId: convId,
-        toolsUsed: response.toolsUsed,
-        resolutionUpdate: response.resolutionUpdate,
-        resolutions: allResolutions // Include all active resolutions for UI sync
-      })
-    } catch (error) {
-      console.error('[Chat] Error:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error'
-      return res.status(500).json({
-        error: 'Failed to process message',
-        details: errorMessage,
-        resolutions: Array.from(resolutions.values()).filter(
-          (r) => r.status === 'active'
+      // Try to load and use the real chat handler
+      try {
+        const { handleChatMessage } = await import(
+          '../w1-resolution/backend/dist/services/chat'
         )
-      })
+        const response = await handleChatMessage(conv.messages, resolutions)
+        conv.messages.push({ role: 'assistant', content: response.text })
+
+        return res.status(200).json({
+          response: response.text,
+          conversationId: convId,
+          resolutions: Array.from(resolutions.values()).filter((r) => r.status === 'active')
+        })
+      } catch (importError) {
+        console.error('Failed to import handler:', importError)
+        // Fallback: just echo the message
+        const echoResponse = `I received your message: "${message}". (Backend services not available)`
+        conv.messages.push({ role: 'assistant', content: echoResponse })
+
+        return res.status(200).json({
+          response: echoResponse,
+          conversationId: convId,
+          resolutions: []
+        })
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      return res.status(500).json({ error: String(error) })
     }
   }
 
-  // Handle other methods
-  return res.status(405).json({
-    error: 'Method not allowed',
-    allowed: ['POST', 'OPTIONS']
-  })
+  return res.status(405).json({ error: 'Method not allowed' })
 }
