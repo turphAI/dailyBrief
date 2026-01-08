@@ -36,10 +36,6 @@ rm -f public/w1/index.html.bak
 mkdir -p api
 cp -r w1-resolution/api/* api/ 2>/dev/null || true
 
-# Copy backend dist and node_modules so API functions can access them
-cp -r w1-resolution/backend/dist/* . 2>/dev/null || true
-cp -r w1-resolution/backend/node_modules . 2>/dev/null || true
-
 echo "✅ Build complete"
 
 echo ""

@@ -1,5 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleChatMessage } from '../services/chat'
+
+// Import backend services - will be in w1-resolution/backend/dist at runtime
+// Using dynamic import to handle module resolution
+let handleChatMessage: any
+
+async function loadServices() {
+  if (!handleChatMessage) {
+    try {
+      const services = await import('../w1-resolution/backend/dist/services/chat.js')
+      handleChatMessage = services.handleChatMessage
+    } catch (e) {
+      console.error('Failed to load chat service:', e)
+      throw e
+    }
+  }
+  return handleChatMessage
+}
 
 // Global state for this function instance
 // NOTE: This resets on redeploy or when function scales
@@ -15,6 +31,8 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  // Load services on first use
+  const chatHandler = await loadServices()
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -65,7 +83,7 @@ export default async function handler(
       console.log(`[Chat] Processing message for conversation: ${convId}`)
 
       // Get Claude's response with tools
-      const response = await handleChatMessage(
+      const response = await chatHandler(
         conversation.messages,
         resolutions
       )
