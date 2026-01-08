@@ -32,39 +32,48 @@ export default function ConversationalInterface({
   const [isLoading, setIsLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string>()
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    console.log('handleSendMessage called', { e, input, isLoading })
-    if (e) e.preventDefault()
-    if (!input.trim()) return
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    const messageText = input.trim()
+    if (!messageText || isLoading) return
 
-    console.log('Sending message:', input)
+    console.log('[Chat] Sending message:', messageText)
 
     // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: input,
+      content: messageText,
       timestamp: new Date()
     }
 
     setMessages(prev => [...prev, userMessage])
-    const messageToSend = input
     setInput('')
     setIsLoading(true)
 
     try {
+      console.log('[Chat] Fetching from API...', { url: 'http://localhost:3000/api/chat' })
       const response = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: messageToSend,
+          message: messageText,
           conversationId: conversationId
         })
       })
 
+      console.log('[Chat] Response received:', { status: response.status })
+
       if (response.ok) {
         const data = await response.json()
         
+        console.log('[Chat] Response data:', { 
+          hasResponse: !!data.response,
+          toolsUsed: data.toolsUsed,
+          conversationId: data.conversationId
+        })
+
         // Store conversation ID for future messages
         setConversationId(data.conversationId)
 
@@ -79,6 +88,7 @@ export default function ConversationalInterface({
 
         // If a resolution was created or updated, update state
         if (data.resolutionUpdate) {
+          console.log('[Chat] Resolution updated:', data.resolutionUpdate.title)
           // Check if it's an update to existing resolution
           const existingIndex = resolutions.findIndex(r => r.id === data.resolutionUpdate.id)
           if (existingIndex >= 0) {
@@ -91,10 +101,12 @@ export default function ConversationalInterface({
           }
         }
       } else {
-        throw new Error('Failed to get response')
+        const errorText = await response.text()
+        console.error('[Chat] API error response:', errorText)
+        throw new Error(`API returned ${response.status}`)
       }
     } catch (error) {
-      console.error('Failed to send message:', error)
+      console.error('[Chat] Failed to send message:', error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
@@ -189,4 +201,3 @@ export default function ConversationalInterface({
     </div>
   )
 }
-
