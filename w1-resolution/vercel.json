@@ -3,6 +3,5 @@
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install",
   "framework": "vite",
-  "root": ".",
   "devCommand": "cd frontend && npm run dev"
 }
