@@ -1,15 +1,35 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build:all",
   "installCommand": "npm install",
   "outputDirectory": "public",
   "rewrites": [
     {
-      "source": "/w1/:path*",
+      "source": "/w1/(.*)",
       "destination": "/w1/index.html"
     },
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/w1/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
     }
   ]
 }

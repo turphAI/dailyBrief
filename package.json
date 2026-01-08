@@ -4,10 +4,10 @@
   "description": "Daily Brief - A collection of weekly projects",
   "private": true,
   "scripts": {
-    "build": "npm run build:index && npm run build:w1 && npm run build:structure",
+    "build:all": "npm run build:index && npm run build:w1 && npm run build:arrange",
     "build:index": "cd index && npm install && npm run build",
     "build:w1": "cd w1-resolution && npm install && cd frontend && npm install && npm run build && cd ../..",
-    "build:structure": "bash scripts/structure-build.sh",
+    "build:arrange": "bash scripts/arrange-build.sh",
     "dev": "npm run dev:index",
     "dev:index": "cd index && npm run dev",
     "dev:w1": "cd w1-resolution && vercel dev --yes"
