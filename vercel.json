@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bash build.sh",
+  "buildCommand": "rm -rf public && bash build.sh",
   "installCommand": "npm install",
   "outputDirectory": "public"
 }
