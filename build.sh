@@ -27,6 +27,12 @@ cp -r w1-resolution/frontend/dist/* public/w1/
 sed -i.bak 's|href="/vite.svg"|href="/w1/vite.svg"|g' public/w1/index.html
 rm -f public/w1/index.html.bak
 
+# Copy API functions to root api/ directory for Vercel
+# Note: copy to api/chat/* not api/w1/chat/* so the path is /api/chat not /api/w1/chat
+mkdir -p api/chat
+cp api/w1/chat.ts api/chat.ts 2>/dev/null || true
+cp -r api/w1/chat/* api/chat/ 2>/dev/null || true
+
 # Create _redirects file for Vercel routing
 cat > public/_redirects << 'EOF'
 /w1/* /w1/index.html 200
@@ -44,4 +50,6 @@ ls -la public/w1/ || echo "ERROR: public/w1 does not exist!"
 echo ""
 echo "w1 index.html favicon line:"
 grep "vite.svg" public/w1/index.html || echo "No vite.svg found"
-# Cache bust
+echo ""
+echo "API functions structure:"
+find api -type f | sort || echo "ERROR: no api/ folder"

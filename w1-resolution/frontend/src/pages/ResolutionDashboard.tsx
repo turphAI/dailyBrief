@@ -11,7 +11,7 @@ export default function ResolutionDashboard() {
 
     setIsLoading(true)
     try {
-      const apiUrl = '/w1/api/resolutions'
+      const apiUrl = '/api/resolutions'
       console.log('Adding resolution to:', apiUrl)
       const response = await fetch(apiUrl, {
         method: 'POST',
