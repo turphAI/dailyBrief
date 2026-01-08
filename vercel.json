@@ -1,5 +1,10 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public"
+  "rewrites": [
+    {
+      "source": "/(?!api)(.*)",
+      "destination": "/public/$1"
+    }
+  ]
 }
