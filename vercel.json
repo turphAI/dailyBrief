@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "index/dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/w1/(.*)", "destination": "/w1-resolution/frontend/dist/$1" },
+    { "source": "/w1/api/(.*)", "destination": "/w1-resolution/api/$1" },
+    { "source": "/(.*)", "destination": "/index/dist/$1" }
+  ]
+}
