@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, PieChart, PartyPopper } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PieChart, PartyPopper, Settings2 } from 'lucide-react'
 import ResolutionRadar from './ResolutionRadar'
 import ResolutionDetailView from './ResolutionDetailView'
 import {
@@ -8,7 +8,7 @@ import {
   calculateProgress,
 } from '../utils/resolutionViz'
 
-type ViewType = 'dashboard' | 'resolutions' | 'detail'
+type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'settings'
 
 interface StructuredInterfaceProps {
   resolutions: any[]
@@ -88,6 +88,23 @@ export default function StructuredInterface({
           title="Resolutions"
         >
           <PartyPopper className="w-5 h-5" />
+        </button>
+
+        {/* Settings Nav */}
+        <button
+          onClick={() => {
+            setCurrentView('settings')
+            setSelectedResolutionId(null)
+            if (!isExpanded) onToggleExpanded()
+          }}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition ${
+            isExpanded && currentView === 'settings'
+              ? 'bg-primary text-primary-foreground shadow-lg'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+          }`}
+          title="Settings"
+        >
+          <Settings2 className="w-5 h-5" />
         </button>
 
         {/* Expand/Collapse Toggle */}
@@ -264,6 +281,29 @@ export default function StructuredInterface({
                 console.log('Delete resolution:', id)
               }}
             />
+          )}
+
+          {/* Settings View */}
+          {currentView === 'settings' && (
+            <div className="space-y-6">
+              {/* Settings Header */}
+              <div>
+                <h2 className="text-base font-semibold text-foreground mb-2">
+                  Settings
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Configure your preferences
+                </p>
+              </div>
+
+              {/* Placeholder for future settings */}
+              <div className="bg-background border rounded-lg p-8 text-center">
+                <Settings2 className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Settings coming soon
+                </p>
+              </div>
+            </div>
           )}
         </div>
       )}
