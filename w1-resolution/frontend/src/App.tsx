@@ -1,21 +1,23 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { Zap } from 'lucide-react'
-import ResolutionDashboard from './pages/ResolutionDashboard'
+import { Target } from 'lucide-react'
+import Dashboard from './pages/Dashboard'
 
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <header className="border-b border-purple-500/20 backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto px-4 py-6 flex items-center gap-3">
-            <Zap className="w-8 h-8 text-purple-400" />
-            <h1 className="text-3xl font-bold text-white">Resolution Tracker</h1>
+      <div className="min-h-screen bg-background text-foreground">
+        {/* Header */}
+        <header className="border-b">
+          <div className="px-6 py-4 flex items-center gap-3">
+            <Target className="w-6 h-6" />
+            <h1 className="text-2xl font-bold">Turph's Resolutions</h1>
           </div>
         </header>
         
-        <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Main Content */}
+        <main className="h-[calc(100vh-65px)]">
           <Routes>
-            <Route path="/" element={<ResolutionDashboard />} />
+            <Route path="/" element={<Dashboard />} />
           </Routes>
         </main>
       </div>

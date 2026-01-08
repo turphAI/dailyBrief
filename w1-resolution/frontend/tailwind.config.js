@@ -41,6 +41,15 @@ export default {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      keyframes: {
+        bounce: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-0.5rem)' },
+        }
+      },
+      animation: {
+        bounce: 'bounce 1s infinite',
+      }
     },
   },
   plugins: [],
