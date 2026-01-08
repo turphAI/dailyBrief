@@ -1,8 +1,18 @@
 import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import dotenv from 'dotenv'
 import resolutionRoutes from './routes/resolutions.js'
 import chatRoutes from './routes/chat.js'
+
+// Load .env.local from project root
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env.local') })
+console.log('✅ Loaded .env.local from project root')
 
 const app = express()
 const PORT = process.env.PORT || 3000

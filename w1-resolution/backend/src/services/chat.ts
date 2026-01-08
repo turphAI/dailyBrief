@@ -8,9 +8,19 @@ import {
   prioritizeResolutions
 } from '../tools/index'
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+let client: Anthropic | null = null
+
+function getAnthropicClient(): Anthropic {
+  if (!client) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Cannot initialize Anthropic client.')
+    }
+    client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+  }
+  return client
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -171,7 +181,8 @@ export async function handleChatMessage(
     }))
 
     // Initial request to Claude with tools
-    let response = await client.messages.create({
+    const anthropicClient = getAnthropicClient()
+    let response = await anthropicClient.messages.create({
       model: 'claude-opus-4-1-20250805',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
@@ -226,7 +237,7 @@ export async function handleChatMessage(
       })
 
       // Get next response from Claude
-      response = await client.messages.create({
+      response = await anthropicClient.messages.create({
         model: 'claude-opus-4-1-20250805',
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
