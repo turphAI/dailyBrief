@@ -1,5 +1,19 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public"
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/w1/:path*",
+      "destination": "/w1/index.html"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ]
 }
