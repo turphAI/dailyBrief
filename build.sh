@@ -1,32 +1,32 @@
 #!/bin/bash
-set -e
+echo "Building and arranging files..."
 
-echo "🔨 Building Daily Brief monorepo..."
-echo ""
-
-# Build landing page
-echo "📍 Building landing page..."
+# Build index
 cd index
 npm install
 npm run build
 cd ..
 
-# Build w1 frontend
-echo "📍 Building w1 frontend..."
+# Build w1
 cd w1-resolution/frontend
 npm install
 npm run build
 cd ../..
 
-# Arrange files
-echo "📍 Arranging files..."
+# Arrange output
 rm -rf public
 mkdir -p public/w1
 
+# Copy landing page
 cp -r index/dist/* public/
+
+# Copy w1 app
 cp -r w1-resolution/frontend/dist/* public/w1/
 
-echo ""
-echo "✅ Build complete!"
-echo "   public/ ready for deployment"
-# Deployment trigger: Thu Jan  8 09:37:43 EST 2026
+# Create _redirects file for Vercel routing
+cat > public/_redirects << 'EOF'
+/w1/* /w1/index.html 200
+/* /index.html 200
+EOF
+
+echo "✅ Build complete"

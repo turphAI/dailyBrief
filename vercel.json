@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd index && npm install && npm run build && cd ../w1-resolution/frontend && npm install && npm run build && cd ../../ && rm -rf public && mkdir -p public/w1 && cp -r index/dist/* public/ && cp -r w1-resolution/frontend/dist/* public/w1/",
+  "buildCommand": "bash build.sh",
   "installCommand": "npm install",
   "outputDirectory": "public"
 }
