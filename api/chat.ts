@@ -65,7 +65,14 @@ export default async function handler(
       }
     } catch (error) {
       console.error('Error:', error)
-      return res.status(500).json({ error: String(error) })
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorStack = error instanceof Error ? error.stack : ''
+      console.error('Stack:', errorStack)
+      return res.status(500).json({ 
+        error: 'Internal Server Error',
+        details: errorMessage,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      })
     }
   }
 
