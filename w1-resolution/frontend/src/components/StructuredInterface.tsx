@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, PieChart, ListTodo } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PieChart, PartyPopper } from 'lucide-react'
 import ResolutionRadar from './ResolutionRadar'
 import ResolutionDetailView from './ResolutionDetailView'
 import {
@@ -87,7 +87,7 @@ export default function StructuredInterface({
           }`}
           title="Resolutions"
         >
-          <ListTodo className="w-5 h-5" />
+          <PartyPopper className="w-5 h-5" />
         </button>
 
         {/* Expand/Collapse Toggle */}
