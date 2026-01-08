@@ -3,6 +3,10 @@
   "installCommand": "npm install",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
       "source": "/w1/:path*",
       "destination": "/w1/index.html"
     },
