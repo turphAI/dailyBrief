@@ -36,17 +36,18 @@ export default function ResolutionDetailView({
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Header with back button */}
-      <div className="flex items-center gap-3 pb-3 border-b">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBack}
-          className="h-8 w-8 p-0"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <h2 className="text-lg font-semibold flex-1 truncate">
+      {/* Breadcrumb */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        <span>Resolutions</span>
+      </button>
+
+      {/* Header */}
+      <div className="pb-3 border-b">
+        <h2 className="text-lg font-semibold">
           {resolution.title}
         </h2>
       </div>
