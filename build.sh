@@ -23,6 +23,10 @@ cp -r index/dist/* public/
 # Copy w1 app
 cp -r w1-resolution/frontend/dist/* public/w1/
 
+# FIX: Update favicon path in w1 index.html to use /w1/ prefix
+sed -i.bak 's|href="/vite.svg"|href="/w1/vite.svg"|g' public/w1/index.html
+rm -f public/w1/index.html.bak
+
 # Create _redirects file for Vercel routing
 cat > public/_redirects << 'EOF'
 /w1/* /w1/index.html 200
@@ -38,5 +42,5 @@ echo ""
 echo "w1 directory:"
 ls -la public/w1/ || echo "ERROR: public/w1 does not exist!"
 echo ""
-echo "_redirects file:"
-cat public/_redirects || echo "ERROR: _redirects does not exist!"
+echo "w1 index.html favicon line:"
+grep "vite.svg" public/w1/index.html || echo "No vite.svg found"
