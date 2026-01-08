@@ -1,5 +1,10 @@
 {
   "buildCommand": "rm -rf public && bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs18.x"
+    }
+  }
 }
