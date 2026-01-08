@@ -30,3 +30,13 @@ cat > public/_redirects << 'EOF'
 EOF
 
 echo "✅ Build complete"
+
+echo ""
+echo "=== FINAL PUBLIC DIRECTORY CONTENTS ==="
+ls -la public/ || echo "ERROR: public/ does not exist!"
+echo ""
+echo "w1 directory:"
+ls -la public/w1/ || echo "ERROR: public/w1 does not exist!"
+echo ""
+echo "_redirects file:"
+cat public/_redirects || echo "ERROR: _redirects does not exist!"
