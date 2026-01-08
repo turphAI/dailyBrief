@@ -63,9 +63,10 @@ export default function StructuredInterface({
           onClick={() => {
             setCurrentView('dashboard')
             setSelectedResolutionId(null)
+            if (!isExpanded) onToggleExpanded()
           }}
           className={`w-10 h-10 rounded-full flex items-center justify-center transition ${
-            currentView === 'dashboard'
+            isExpanded && currentView === 'dashboard'
               ? 'bg-primary text-primary-foreground shadow-lg'
               : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
           }`}
@@ -79,9 +80,10 @@ export default function StructuredInterface({
           onClick={() => {
             setCurrentView('resolutions')
             setSelectedResolutionId(null)
+            if (!isExpanded) onToggleExpanded()
           }}
           className={`w-10 h-10 rounded-full flex items-center justify-center transition ${
-            currentView === 'resolutions' || currentView === 'detail'
+            isExpanded && (currentView === 'resolutions' || currentView === 'detail')
               ? 'bg-primary text-primary-foreground shadow-lg'
               : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
           }`}
