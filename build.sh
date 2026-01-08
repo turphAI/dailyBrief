@@ -28,8 +28,8 @@ cp -r index/dist/* public/
 # Copy w1 app
 cp -r w1-resolution/frontend/dist/* public/w1/
 
-# FIX: Update favicon path in w1 index.html to use /w1/ prefix
-sed -i.bak 's|href="/vite.svg"|href="/w1/vite.svg"|g' public/w1/index.html
+# FIX: Remove favicon link since vite.svg doesn't exist
+sed -i.bak '/<link rel="icon"/d' public/w1/index.html
 rm -f public/w1/index.html.bak
 
 # Arrange API functions
