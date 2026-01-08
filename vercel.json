@@ -1,11 +1,5 @@
 {
-  "buildCommand": "npm run build && npm run build:dist",
-  "outputDirectory": "dist",
+  "buildCommand": "npm run build",
   "installCommand": "npm install",
-  "rewrites": [
-    { "source": "/w1/(.*)", "destination": "/w1/$1" },
-    { "source": "/w1/api/(.*)", "destination": "/w1/api/$1" },
-    { "source": "/(.+)", "destination": "/$1" },
-    { "source": "/", "destination": "/index.html" }
-  ]
+  "outputDirectory": "public"
 }
