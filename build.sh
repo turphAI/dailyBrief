@@ -14,7 +14,6 @@ npm run build
 cd ../..
 
 # Arrange output
-rm -rf public
 mkdir -p public/w1
 
 # Copy landing page
