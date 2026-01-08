@@ -52,17 +52,21 @@ export default function ConversationalInterface({
     }
   }, [input])
 
+  // Helper function to get API URL based on environment
+  const getApiUrl = (path: string) => {
+    // If running on localhost, use local backend
+    if (window.location.hostname === 'localhost') {
+      return `http://localhost:3000${path}`
+    }
+    // If running on deployed version, use relative paths
+    return path
+  }
+
   // Fetch resolutions on component mount
   useEffect(() => {
     const fetchResolutions = async () => {
       try {
-        // Choose API endpoint based on environment
-        let apiUrl = '/api/chat/resolutions/list/all'
-        if (window.location.hostname === 'localhost' && window.location.port === '5173') {
-          // Local dev: use local backend on port 3000
-          apiUrl = 'http://localhost:3000/api/chat/resolutions/list/all'
-        }
-        const response = await fetch(apiUrl)
+        const response = await fetch(getApiUrl('/api/chat/resolutions/list/all'))
         if (response.ok) {
           const data = await response.json()
           if (data.resolutions && Array.isArray(data.resolutions)) {
@@ -98,14 +102,7 @@ export default function ConversationalInterface({
       setInput('')
       setIsLoading(true)
 
-      // Choose API endpoint based on environment
-      let apiUrl = '/api/chat'
-      if (window.location.hostname === 'localhost' && window.location.port === '5173') {
-        // Local dev: use local backend on port 3000
-        apiUrl = 'http://localhost:3000/api/chat'
-      }
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch(getApiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
