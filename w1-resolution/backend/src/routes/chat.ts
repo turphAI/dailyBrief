@@ -50,11 +50,15 @@ router.post('/', async (req: Request, res: Response) => {
     // Save conversation
     conversations.set(convId, conversation)
 
-    res.json({
+    // Get current list of all resolutions to send to frontend
+  const allResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
+
+  res.json({
       response: response.text,
       conversationId: convId,
       toolsUsed: response.toolsUsed,
-      resolutionUpdate: response.resolutionUpdate
+      resolutionUpdate: response.resolutionUpdate,
+      resolutions: allResolutions // Include all resolutions for UI sync
     })
   } catch (error) {
     console.error('Chat error:', error)
@@ -73,6 +77,12 @@ router.get('/:conversationId', (req: Request, res: Response) => {
     return
   }
   res.json(conversation)
+})
+
+// Get all resolutions (for UI initialization)
+router.get('/resolutions/list/all', (req: Request, res: Response) => {
+  const allResolutions = Array.from(resolutions.values())
+  res.json({ resolutions: allResolutions })
 })
 
 export default router

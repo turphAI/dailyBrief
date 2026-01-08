@@ -18,7 +18,7 @@ export default function Dashboard() {
 
       {/* Structured Interface - Right Panel (Supporting) */}
       <div 
-        className={`border-l transition-all duration-300 overflow-hidden ${
+        className={`h-full border-l transition-all duration-300 overflow-hidden ${
           isStructuredExpanded ? 'w-96' : 'w-16'
         }`}
       >

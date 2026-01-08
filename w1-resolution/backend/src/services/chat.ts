@@ -1,5 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
+import { 
+  createResolution, 
+  listResolutions, 
+  completeResolution, 
+  deleteResolution,
+  prioritizeResolutions
+} from '../tools/index'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -82,6 +89,32 @@ const TOOLS = [
       },
       required: ['id']
     }
+  },
+  {
+    name: 'prioritize_resolutions',
+    description: 'Intelligently prioritize resolutions with reasoning about focus, time allocation, and dependencies. Creates a fluid strategy for balanced progress.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        timePerWeek: {
+          type: 'number',
+          description: 'Hours available per week for resolutions (default: 20)'
+        },
+        focusArea: {
+          type: 'string',
+          description: 'Current life focus area (e.g., "health", "career", "balanced growth")'
+        },
+        constraints: {
+          type: 'string',
+          description: 'Any constraints or challenges affecting prioritization'
+        },
+        askFollowUp: {
+          type: 'boolean',
+          description: 'Whether to ask clarifying questions to refine the strategy'
+        }
+      },
+      required: []
+    }
   }
 ]
 
@@ -115,77 +148,11 @@ Remember: You're coaching Turph toward meaningful, achievable growth. Be support
 
 // Tool implementations
 const toolImplementations: Record<string, Function> = {
-  create_resolution: (input: any, resolutions: Map<string, any>) => {
-    const activeResolutions = Array.from(resolutions.values()).filter(
-      (r: any) => r.status === 'active'
-    )
-    if (activeResolutions.length >= 5) {
-      return {
-        success: false,
-        error: 'You have reached the 5-resolution limit. Complete or delete one first.'
-      }
-    }
-
-    const id = uuidv4()
-    const resolution = {
-      id,
-      title: input.title,
-      measurable_criteria: input.measurable_criteria,
-      context: input.context || '',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      updates: [],
-      completedAt: null
-    }
-
-    resolutions.set(id, resolution)
-    console.log(`✅ Created resolution: ${input.title}`)
-    return { success: true, resolution, message: `Created resolution: "${input.title}"` }
-  },
-
-  list_resolutions: (input: any, resolutions: Map<string, any>) => {
-    const all = Array.from(resolutions.values())
-    let filtered = all
-
-    if (input.status === 'active') {
-      filtered = all.filter((r: any) => r.status === 'active')
-    } else if (input.status === 'completed') {
-      filtered = all.filter((r: any) => r.status === 'completed')
-    }
-
-    console.log(`📋 Listed ${filtered.length} ${input.status} resolutions`)
-    return {
-      success: true,
-      count: filtered.length,
-      resolutions: filtered,
-      message: `Found ${filtered.length} ${input.status} resolutions`
-    }
-  },
-
-  complete_resolution: (input: any, resolutions: Map<string, any>) => {
-    const resolution = resolutions.get(input.id)
-    if (!resolution) {
-      return { success: false, error: 'Resolution not found' }
-    }
-
-    resolution.status = 'completed'
-    resolution.completedAt = new Date().toISOString()
-
-    console.log(`🎉 Completed resolution: ${resolution.title}`)
-    return { success: true, resolution, message: `Completed: "${resolution.title}" 🎉` }
-  },
-
-  delete_resolution: (input: any, resolutions: Map<string, any>) => {
-    const resolution = resolutions.get(input.id)
-    if (!resolution) {
-      return { success: false, error: 'Resolution not found' }
-    }
-
-    const title = resolution.title
-    resolutions.delete(input.id)
-    console.log(`🗑️ Deleted resolution: ${title}`)
-    return { success: true, message: `Deleted resolution: "${title}"` }
-  }
+  create_resolution: createResolution,
+  list_resolutions: listResolutions,
+  complete_resolution: completeResolution,
+  delete_resolution: deleteResolution,
+  prioritize_resolutions: prioritizeResolutions
 }
 
 export async function handleChatMessage(
