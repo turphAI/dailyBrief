@@ -12,6 +12,9 @@
     "dev:index": "cd index && npm run dev",
     "dev:w1": "cd w1-resolution && vercel dev --yes"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "uuid": "^9.0.1"
+  },
   "devDependencies": {}
 }
