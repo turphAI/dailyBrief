@@ -44,3 +44,4 @@ ls -la public/w1/ || echo "ERROR: public/w1 does not exist!"
 echo ""
 echo "w1 index.html favicon line:"
 grep "vite.svg" public/w1/index.html || echo "No vite.svg found"
+# Cache bust
