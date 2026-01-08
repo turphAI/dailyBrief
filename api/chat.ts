@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleChatMessage } from '../backend/src/services/chat'
+import { handleChatMessage } from '../w1-resolution/backend/dist/services/chat'
 
 // Global state for this function instance
 // NOTE: This resets on redeploy or when function scales

@@ -7,7 +7,13 @@ npm install
 npm run build
 cd ..
 
-# Build w1
+# Build w1 backend (for API functions)
+cd w1-resolution/backend
+npm install
+npm run build
+cd ../..
+
+# Build w1 frontend
 cd w1-resolution/frontend
 npm install
 npm run build
