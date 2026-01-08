@@ -1,17 +1,5 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    {
-      "source": "/w1/(?!assets)(?!api)(.*)",
-      "destination": "/w1/index.html"
-    },
-    {
-      "source": "/((?!w1|api).*)",
-      "destination": "/index.html"
-    }
-  ]
+  "outputDirectory": "public"
 }
