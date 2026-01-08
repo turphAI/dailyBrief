@@ -11,7 +11,7 @@ import {
 type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'settings'
 type NavState = 'collapsed' | 'transition' | 'open'
 
-const TRANSITION_DURATION = 900 // ms
+const TRANSITION_DURATION = 600 // ms
 
 interface StructuredInterfaceProps {
   resolutions: any[]
@@ -48,24 +48,23 @@ export default function StructuredInterface({
   }, [isExpanded])
 
   const isClickable = navState !== 'transition'
+  const isOpening = navState === 'transition' && isExpanded
+  const isClosing = navState === 'transition' && !isExpanded
 
   // Handle nav icon click when collapsed (triggers expand + navigate)
   const handleNavClick = (view: ViewType) => {
     if (!isClickable) return
     
     if (navState === 'collapsed') {
-      // Collapsed: expand and navigate
       setCurrentView(view)
       setSelectedResolutionId(null)
       onToggleExpanded()
     } else if (navState === 'open') {
-      // Open: just navigate (no state change)
       setCurrentView(view)
       setSelectedResolutionId(null)
     }
   }
 
-  // Handle collapse toggle click
   const handleCollapseClick = () => {
     if (!isClickable) return
     onToggleExpanded()
@@ -91,84 +90,108 @@ export default function StructuredInterface({
     setCurrentView('resolutions')
   }
 
-  // Nav button component for reuse
-  const NavButton = ({ 
-    view, 
-    icon: Icon, 
-    title,
-    isActive 
-  }: { 
-    view: ViewType
-    icon: typeof PieChart
-    title: string
-    isActive: boolean
-  }) => (
-    <button
-      onClick={() => handleNavClick(view)}
-      disabled={!isClickable}
-      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-[900ms] ${
-        navState === 'open' && isActive
-          ? 'bg-primary text-primary-foreground shadow-lg'
-          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-      } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
-      title={title}
-    >
-      <Icon className="w-5 h-5" />
-    </button>
-  )
-
-  const isCollapsedLayout = navState === 'collapsed' || (navState === 'transition' && !isExpanded)
+  // Determine visual state for animations
+  const showAsOpen = navState === 'open' || isOpening
+  const showAsClosed = navState === 'collapsed' || isClosing
 
   return (
-    <div className="flex flex-col h-full bg-muted/50">
-      {/* Navigation */}
+    <div className="relative flex flex-col h-full bg-muted/50 overflow-hidden">
+      {/* Navigation Container - Animates position */}
       <div 
-        className={`flex items-center gap-2 p-2 transition-all duration-[900ms] ${
-          isCollapsedLayout
-            ? 'flex-col justify-center h-full'
-            : 'flex-row border-b'
-        }`}
+        className="absolute inset-x-0 flex flex-col items-center z-10 transition-all ease-in-out"
+        style={{
+          transitionDuration: `${TRANSITION_DURATION}ms`,
+          top: showAsOpen ? '0' : '50%',
+          transform: showAsOpen ? 'translateY(0)' : 'translateY(-50%)',
+        }}
       >
-        <NavButton 
-          view="dashboard" 
-          icon={PieChart} 
-          title="Dashboard"
-          isActive={currentView === 'dashboard'}
-        />
-        <NavButton 
-          view="resolutions" 
-          icon={PartyPopper} 
-          title="Resolutions"
-          isActive={currentView === 'resolutions' || currentView === 'detail'}
-        />
-        <NavButton 
-          view="settings" 
-          icon={Settings2} 
-          title="Settings"
-          isActive={currentView === 'settings'}
-        />
-
-        {/* Expand/Collapse Toggle */}
-        <button
-          onClick={handleCollapseClick}
-          disabled={!isClickable}
-          className={`w-10 h-10 rounded-full bg-muted-foreground/20 flex items-center justify-center hover:bg-muted-foreground/30 transition-all duration-[900ms] ${
-            isCollapsedLayout ? 'mt-4' : 'ml-auto'
-          } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
+        {/* Nav Icons Container - Animates from vertical to horizontal */}
+        <div 
+          className="flex items-center p-2 transition-all ease-in-out"
+          style={{
+            transitionDuration: `${TRANSITION_DURATION}ms`,
+            flexDirection: showAsOpen ? 'row' : 'column',
+            gap: showAsOpen ? '8px' : '8px',
+            borderBottom: showAsOpen ? '1px solid hsl(var(--border))' : 'none',
+            width: showAsOpen ? '100%' : 'auto',
+            justifyContent: showAsOpen ? 'flex-start' : 'center',
+          }}
         >
-          {navState === 'open' || (navState === 'transition' && isExpanded) ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronLeft className="w-5 h-5" />
-          )}
-        </button>
+          {/* Dashboard */}
+          <button
+            onClick={() => handleNavClick('dashboard')}
+            disabled={!isClickable}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ease-in-out ${
+              navState === 'open' && currentView === 'dashboard'
+                ? 'bg-primary text-primary-foreground shadow-lg'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
+            style={{ transitionDuration: `${TRANSITION_DURATION}ms` }}
+            title="Dashboard"
+          >
+            <PieChart className="w-5 h-5" />
+          </button>
+
+          {/* Resolutions */}
+          <button
+            onClick={() => handleNavClick('resolutions')}
+            disabled={!isClickable}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ease-in-out ${
+              navState === 'open' && (currentView === 'resolutions' || currentView === 'detail')
+                ? 'bg-primary text-primary-foreground shadow-lg'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
+            style={{ transitionDuration: `${TRANSITION_DURATION}ms` }}
+            title="Resolutions"
+          >
+            <PartyPopper className="w-5 h-5" />
+          </button>
+
+          {/* Settings */}
+          <button
+            onClick={() => handleNavClick('settings')}
+            disabled={!isClickable}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ease-in-out ${
+              navState === 'open' && currentView === 'settings'
+                ? 'bg-primary text-primary-foreground shadow-lg'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
+            style={{ transitionDuration: `${TRANSITION_DURATION}ms` }}
+            title="Settings"
+          >
+            <Settings2 className="w-5 h-5" />
+          </button>
+
+          {/* Expand/Collapse Toggle */}
+          <button
+            onClick={handleCollapseClick}
+            disabled={!isClickable}
+            className={`w-10 h-10 rounded-full bg-muted-foreground/20 flex items-center justify-center hover:bg-muted-foreground/30 transition-all ease-in-out ${
+              !isClickable ? 'cursor-not-allowed opacity-70' : ''
+            }`}
+            style={{ 
+              transitionDuration: `${TRANSITION_DURATION}ms`,
+              marginLeft: showAsOpen ? 'auto' : '0',
+              marginTop: showAsOpen ? '0' : '16px',
+            }}
+          >
+            {showAsOpen ? (
+              <ChevronRight className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Content Area */}
+      {/* Content Area - Below nav when open */}
       <div 
-        className={`flex-1 overflow-hidden transition-all duration-[900ms] ${
-          navState === 'open' ? 'opacity-100' : 'opacity-0'
-        }`}
+        className="flex-1 overflow-hidden transition-all ease-in-out"
+        style={{
+          transitionDuration: `${TRANSITION_DURATION}ms`,
+          opacity: navState === 'open' ? 1 : 0,
+          paddingTop: navState === 'open' ? '60px' : '0',
+        }}
       >
         {(navState === 'open' || navState === 'transition') && (
           <div className="h-full overflow-y-auto p-4">
