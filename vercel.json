@@ -1,7 +1,10 @@
 {
   "buildCommand": "rm -rf public && bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/w1(.*)", "destination": "/public/w1$1" },
+    { "source": "/(.*)", "destination": "/public/$1" }
+  ],
   "functions": {
     "api/**/*.ts": {
       "runtime": "nodejs18.x"
