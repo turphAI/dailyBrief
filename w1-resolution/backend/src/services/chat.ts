@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
 import { 
   createResolution, 
+  editResolution,
   listResolutions, 
   completeResolution, 
   deleteResolution,
@@ -55,6 +56,32 @@ const TOOLS = [
         }
       },
       required: ['title', 'measurable_criteria']
+    }
+  },
+  {
+    name: 'edit_resolution',
+    description: 'Edit an existing resolution title, measurable criteria, or context',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: {
+          type: 'string',
+          description: 'The ID of the resolution to edit'
+        },
+        title: {
+          type: 'string',
+          description: 'New title for the resolution (optional)'
+        },
+        measurable_criteria: {
+          type: 'string',
+          description: 'New measurable criteria (optional)'
+        },
+        context: {
+          type: 'string',
+          description: 'New context statement (optional)'
+        }
+      },
+      required: ['resolution_id']
     }
   },
   {
@@ -159,6 +186,7 @@ Remember: You're coaching Turph toward meaningful, achievable growth. Be support
 // Tool implementations
 const toolImplementations: Record<string, Function> = {
   create_resolution: createResolution,
+  edit_resolution: editResolution,
   list_resolutions: listResolutions,
   complete_resolution: completeResolution,
   delete_resolution: deleteResolution,
