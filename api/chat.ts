@@ -35,6 +35,11 @@ export default async function handler(
 
       // Try to load and use the real chat handler
       try {
+        // Ensure API key is available
+        if (!process.env.ANTHROPIC_API_KEY) {
+          throw new Error('ANTHROPIC_API_KEY environment variable is not set')
+        }
+
         const { handleChatMessage } = await import(
           '../w1-resolution/backend/dist/services/chat'
         )
