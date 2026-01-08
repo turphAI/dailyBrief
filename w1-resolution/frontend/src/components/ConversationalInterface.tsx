@@ -56,11 +56,13 @@ export default function ConversationalInterface({
   useEffect(() => {
     const fetchResolutions = async () => {
       try {
-        // Use deployed API when in dev mode (localhost), otherwise use relative path
-        const apiBase = window.location.hostname === 'localhost' 
-          ? 'https://daily-brief-nu.vercel.app'
-          : ''
-        const response = await fetch(`${apiBase}/api/chat/resolutions/list/all`)
+        // Choose API endpoint based on environment
+        let apiUrl = '/api/chat/resolutions/list/all'
+        if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+          // Local dev: use local backend on port 3000
+          apiUrl = 'http://localhost:3000/api/chat/resolutions/list/all'
+        }
+        const response = await fetch(apiUrl)
         if (response.ok) {
           const data = await response.json()
           if (data.resolutions && Array.isArray(data.resolutions)) {
@@ -96,12 +98,14 @@ export default function ConversationalInterface({
       setInput('')
       setIsLoading(true)
 
-      // Use deployed API when in dev mode (localhost), otherwise use relative path
-      const apiBase = window.location.hostname === 'localhost' 
-        ? 'https://daily-brief-nu.vercel.app'
-        : ''
+      // Choose API endpoint based on environment
+      let apiUrl = '/api/chat'
+      if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+        // Local dev: use local backend on port 3000
+        apiUrl = 'http://localhost:3000/api/chat'
+      }
 
-      const response = await fetch(`${apiBase}/api/chat`, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

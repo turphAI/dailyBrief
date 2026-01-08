@@ -1,4 +1,5 @@
 {
   "buildCommand": "bash build.sh",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "outputDirectory": "public"
 }
