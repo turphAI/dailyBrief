@@ -1,95 +1,801 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import Anthropic from '@anthropic-ai/sdk'
+import { v4 as uuidv4 } from 'uuid'
+import { createClient } from 'redis'
+
+// ============================================================================
+// Redis State Management
+// ============================================================================
+
+let redisClient: ReturnType<typeof createClient> | null = null
+let isRedisConnected = false
+
+async function getRedisClient() {
+  if (isRedisConnected && redisClient) {
+    return redisClient
+  }
+
+  const redisUrl = process.env.KV_URL || process.env.REDIS_URL
+  if (redisUrl) {
+    try {
+      redisClient = createClient({ url: redisUrl })
+      redisClient.on('error', (err) => {
+        console.error('Redis client error:', err)
+        isRedisConnected = false
+      })
+      await redisClient.connect()
+      isRedisConnected = true
+      console.log('✅ Redis connected')
+      return redisClient
+    } catch (e: any) {
+      console.error('❌ Redis connection failed:', e.message)
+      isRedisConnected = false
+      return null
+    }
+  }
+  return null
+}
+
+// In-memory fallback (resets on cold start - use Redis for persistence)
+const inMemoryResolutions = new Map<string, any>()
+const inMemoryConversations = new Map<string, any[]>()
+
+async function loadResolutions(): Promise<Map<string, any>> {
+  const resolutions = new Map<string, any>()
+  
+  try {
+    const client = await getRedisClient()
+    if (client && isRedisConnected) {
+      const ids = await client.sMembers('resolutions:all')
+      if (ids && ids.length > 0) {
+        for (const id of ids) {
+          const data = await client.get(`resolution:${id}`)
+          if (data) {
+            resolutions.set(id, JSON.parse(data))
+          }
+        }
+      }
+      console.log(`[Redis] Loaded ${resolutions.size} resolutions`)
+      return resolutions
+    }
+  } catch (e) {
+    console.error('Error loading from Redis:', e)
+  }
+  
+  // Fallback to in-memory
+  console.log(`[Memory] Using ${inMemoryResolutions.size} cached resolutions`)
+  return new Map(inMemoryResolutions)
+}
+
+async function saveResolutions(resolutions: Map<string, any>): Promise<void> {
+  // Update in-memory cache
+  inMemoryResolutions.clear()
+  for (const [id, resolution] of resolutions.entries()) {
+    inMemoryResolutions.set(id, resolution)
+  }
+  
+  // Try to save to Redis
+  try {
+    const client = await getRedisClient()
+    if (client && isRedisConnected) {
+      for (const [id, resolution] of resolutions.entries()) {
+        await client.set(`resolution:${id}`, JSON.stringify(resolution))
+        await client.sAdd('resolutions:all', id)
+      }
+      console.log(`[Redis] Saved ${resolutions.size} resolutions`)
+    }
+  } catch (e) {
+    console.error('Error saving to Redis:', e)
+  }
+}
+
+async function loadConversation(convId: string): Promise<any[]> {
+  try {
+    const client = await getRedisClient()
+    if (client && isRedisConnected) {
+      const data = await client.get(`conversation:${convId}`)
+      if (data) {
+        return JSON.parse(data)
+      }
+    }
+  } catch (e) {
+    console.error('Error loading conversation:', e)
+  }
+  
+  return inMemoryConversations.get(convId) || []
+}
+
+async function saveConversation(convId: string, messages: any[]): Promise<void> {
+  // Update in-memory cache
+  inMemoryConversations.set(convId, messages)
+  
+  // Try to save to Redis (expires after 24 hours)
+  try {
+    const client = await getRedisClient()
+    if (client && isRedisConnected) {
+      await client.setEx(`conversation:${convId}`, 86400, JSON.stringify(messages))
+    }
+  } catch (e) {
+    console.error('Error saving conversation:', e)
+  }
+}
+
+// ============================================================================
+// Tool Implementations
+// ============================================================================
+
+interface ToolResult {
+  success: boolean
+  message: string
+  error?: string
+  resolution?: any
+  count?: number
+  resolutions?: any[]
+}
+
+function createResolution(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    const activeResolutions = Array.from(resolutions.values()).filter(
+      (r: any) => r.status === 'active'
+    )
+    
+    if (activeResolutions.length >= 5) {
+      return {
+        success: false,
+        message: 'Resolution limit reached',
+        error: 'You have reached the 5-resolution limit. Complete or delete one first.'
+      }
+    }
+
+    if (!input.title || !input.measurable_criteria) {
+      return {
+        success: false,
+        message: 'Missing required fields',
+        error: 'Title and measurable_criteria are required'
+      }
+    }
+
+    const id = uuidv4()
+    const resolution = {
+      id,
+      title: input.title,
+      measurable_criteria: input.measurable_criteria,
+      context: input.context || '',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updates: [],
+      completedAt: null
+    }
+
+    resolutions.set(id, resolution)
+    console.log(`✅ Created resolution: ${input.title}`)
+    
+    return { 
+      success: true, 
+      message: `Created resolution: "${input.title}"`,
+      resolution 
+    }
+  } catch (error) {
+    console.error('Error in createResolution:', error)
+    return {
+      success: false,
+      message: 'Failed to create resolution',
+      error: (error as Error).message
+    }
+  }
+}
+
+function editResolution(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    const { resolution_id, title, measurable_criteria, context } = input
+
+    if (!resolution_id) {
+      return {
+        success: false,
+        message: 'Missing resolution ID',
+        error: 'resolution_id is required to edit a resolution'
+      }
+    }
+
+    const resolution = resolutions.get(resolution_id)
+    if (!resolution) {
+      return {
+        success: false,
+        message: 'Resolution not found',
+        error: `Resolution with ID "${resolution_id}" does not exist`
+      }
+    }
+
+    const changes: string[] = []
+
+    if (title !== undefined && title !== null && title.trim() !== '') {
+      const oldTitle = resolution.title
+      resolution.title = title.trim()
+      changes.push(`title: "${oldTitle}" → "${title.trim()}"`)
+    }
+
+    if (measurable_criteria !== undefined && measurable_criteria !== null && measurable_criteria.trim() !== '') {
+      resolution.measurable_criteria = measurable_criteria.trim()
+      changes.push(`measurable criteria updated`)
+    }
+
+    if (context !== undefined && context !== null) {
+      const oldContext = resolution.context || ''
+      resolution.context = context.trim()
+      if (context.trim() !== oldContext) {
+        changes.push(`context updated`)
+      }
+    }
+
+    if (changes.length === 0) {
+      return {
+        success: false,
+        message: 'No changes provided',
+        error: 'At least one field (title, measurable_criteria, or context) must be provided to edit'
+      }
+    }
+
+    resolution.updatedAt = new Date().toISOString()
+    resolutions.set(resolution_id, resolution)
+
+    console.log(`✅ Edited resolution: ${resolution.title} - ${changes.join(', ')}`)
+
+    return {
+      success: true,
+      message: `Updated resolution "${resolution.title}": ${changes.join(', ')}`,
+      resolution
+    }
+  } catch (error) {
+    console.error('Error in editResolution:', error)
+    return {
+      success: false,
+      message: 'Failed to edit resolution',
+      error: (error as Error).message
+    }
+  }
+}
+
+function listResolutions(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    const all = Array.from(resolutions.values())
+    let filtered = all
+
+    if (input.status === 'active') {
+      filtered = all.filter((r: any) => r.status === 'active')
+    } else if (input.status === 'completed') {
+      filtered = all.filter((r: any) => r.status === 'completed')
+    }
+
+    console.log(`📋 Listed ${filtered.length} ${input.status} resolutions`)
+    
+    return {
+      success: true,
+      message: `Found ${filtered.length} ${input.status} resolutions`,
+      count: filtered.length,
+      resolutions: filtered
+    }
+  } catch (error) {
+    console.error('Error in listResolutions:', error)
+    return {
+      success: false,
+      message: 'Failed to list resolutions',
+      error: (error as Error).message
+    }
+  }
+}
+
+function completeResolution(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    if (!input.id) {
+      return {
+        success: false,
+        message: 'Missing resolution ID',
+        error: 'ID is required'
+      }
+    }
+
+    const resolution = resolutions.get(input.id)
+    if (!resolution) {
+      return {
+        success: false,
+        message: 'Resolution not found',
+        error: `Resolution with ID ${input.id} does not exist`
+      }
+    }
+
+    resolution.status = 'completed'
+    resolution.completedAt = new Date().toISOString()
+
+    console.log(`🎉 Completed resolution: ${resolution.title}`)
+    
+    return { 
+      success: true, 
+      message: `Completed: "${resolution.title}" 🎉`,
+      resolution 
+    }
+  } catch (error) {
+    console.error('Error in completeResolution:', error)
+    return {
+      success: false,
+      message: 'Failed to complete resolution',
+      error: (error as Error).message
+    }
+  }
+}
+
+function deleteResolution(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    if (!input.id) {
+      return {
+        success: false,
+        message: 'Missing resolution ID',
+        error: 'ID is required'
+      }
+    }
+
+    const resolution = resolutions.get(input.id)
+    if (!resolution) {
+      return {
+        success: false,
+        message: 'Resolution not found',
+        error: `Resolution with ID ${input.id} does not exist`
+      }
+    }
+
+    const title = resolution.title
+    resolutions.delete(input.id)
+    
+    console.log(`🗑️ Deleted resolution: ${title}`)
+    
+    return { 
+      success: true, 
+      message: `Deleted resolution: "${title}"`
+    }
+  } catch (error) {
+    console.error('Error in deleteResolution:', error)
+    return {
+      success: false,
+      message: 'Failed to delete resolution',
+      error: (error as Error).message
+    }
+  }
+}
+
+function prioritizeResolutions(input: any, resolutions: Map<string, any>): ToolResult {
+  try {
+    const activeResolutions = Array.from(resolutions.values()).filter(
+      (r: any) => r.status === 'active'
+    )
+
+    if (activeResolutions.length === 0) {
+      return {
+        success: false,
+        message: 'No active resolutions to prioritize',
+        error: 'Create some resolutions first before prioritizing'
+      }
+    }
+
+    const timePerWeek = input.timePerWeek || 20
+    const focusArea = input.focusArea || 'balanced growth'
+
+    // Simple prioritization strategy
+    const strategy = {
+      immediate: [] as any[],
+      secondary: [] as any[],
+      maintenance: [] as any[],
+      strategy: `Focus on ${focusArea} with ${timePerWeek} hours/week available.`
+    }
+
+    activeResolutions.forEach((r, i) => {
+      if (i === 0) {
+        strategy.immediate.push({
+          resolution: r.title,
+          reason: 'Primary focus this period',
+          suggestedWeeklyHours: Math.floor(timePerWeek * 0.4)
+        })
+      } else if (i < 3) {
+        strategy.secondary.push({
+          resolution: r.title,
+          reason: 'Important but requires less focused effort',
+          suggestedWeeklyHours: Math.floor(timePerWeek * 0.2)
+        })
+      } else {
+        strategy.maintenance.push({
+          resolution: r.title,
+          reason: 'Maintain momentum with minimal effort',
+          suggestedMinimalEffort: '30 minutes per week'
+        })
+      }
+    })
+
+    console.log(`📊 Prioritized ${activeResolutions.length} active resolutions`)
+
+    return {
+      success: true,
+      message: `Created prioritization strategy for ${activeResolutions.length} resolutions`,
+      resolution: strategy
+    }
+  } catch (error) {
+    console.error('Error in prioritizeResolutions:', error)
+    return {
+      success: false,
+      message: 'Failed to prioritize resolutions',
+      error: (error as Error).message
+    }
+  }
+}
+
+// Tool mapping
+const toolImplementations: Record<string, Function> = {
+  create_resolution: createResolution,
+  edit_resolution: editResolution,
+  list_resolutions: listResolutions,
+  complete_resolution: completeResolution,
+  delete_resolution: deleteResolution,
+  prioritize_resolutions: prioritizeResolutions
+}
+
+// ============================================================================
+// Claude Integration
+// ============================================================================
+
+const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'create_resolution',
+    description: 'Create a new active resolution with measurable criteria',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'The resolution title (e.g., "Exercise 3 times per week")'
+        },
+        measurable_criteria: {
+          type: 'string',
+          description: 'How to measure success (e.g., "3 workouts per week for 52 weeks")'
+        },
+        context: {
+          type: 'string',
+          description: 'Brief context about why this matters (optional)'
+        }
+      },
+      required: ['title', 'measurable_criteria']
+    }
+  },
+  {
+    name: 'edit_resolution',
+    description: 'Edit an existing resolution title, measurable criteria, or context',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: {
+          type: 'string',
+          description: 'The ID of the resolution to edit'
+        },
+        title: {
+          type: 'string',
+          description: 'New title for the resolution (optional)'
+        },
+        measurable_criteria: {
+          type: 'string',
+          description: 'New measurable criteria (optional)'
+        },
+        context: {
+          type: 'string',
+          description: 'New context statement (optional)'
+        }
+      },
+      required: ['resolution_id']
+    }
+  },
+  {
+    name: 'list_resolutions',
+    description: 'Get the current list of active resolutions to check status, limits, and duplicates',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['active', 'completed', 'all'],
+          description: 'Which resolutions to list'
+        }
+      },
+      required: ['status']
+    }
+  },
+  {
+    name: 'complete_resolution',
+    description: 'Mark a resolution as completed',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The resolution ID'
+        }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'delete_resolution',
+    description: 'Delete a resolution',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The resolution ID to delete'
+        }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'prioritize_resolutions',
+    description: 'Intelligently prioritize resolutions with reasoning about focus, time allocation, and dependencies.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        timePerWeek: {
+          type: 'number',
+          description: 'Hours available per week for resolutions (default: 20)'
+        },
+        focusArea: {
+          type: 'string',
+          description: 'Current life focus area (e.g., "health", "career", "balanced growth")'
+        },
+        constraints: {
+          type: 'string',
+          description: 'Any constraints or challenges affecting prioritization'
+        },
+        askFollowUp: {
+          type: 'boolean',
+          description: 'Whether to ask clarifying questions to refine the strategy'
+        }
+      },
+      required: []
+    }
+  }
+]
+
+const SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
+
+## Your Role
+Help Turph create, manage, and achieve meaningful resolutions through thoughtful conversation.
+
+## Core Rules
+1. **Resolution Limit**: Maximum 5 ACTIVE resolutions at any time
+2. **Measurable**: Every resolution MUST include specific, measurable criteria
+3. **Realistic**: Resolutions should be achievable within 1 year
+4. **Clarity**: Push back on vague goals - ask clarifying questions
+
+## Your Conversational Style
+- Be encouraging but honest
+- Challenge vague resolutions with specific questions
+- Help refine resolutions before creating them
+- Celebrate progress and completed resolutions
+- Never create a resolution without measurable criteria
+
+## How to Respond
+1. When user suggests a resolution, ask clarifying questions if needed
+2. Refine it together conversationally
+3. Once solid, use the create_resolution tool
+4. Always explain what you're doing in plain language
+5. If user hits the 5-resolution limit, suggest reviewing existing ones
+6. Use list_resolutions to check current status before creating new ones
+
+Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface ChatResponse {
+  text: string
+  toolsUsed: string[]
+  resolutionUpdate?: any
+}
+
+async function handleChatMessage(
+  messages: Message[],
+  resolutions: Map<string, any>
+): Promise<ChatResponse> {
+  const toolsUsed: string[] = []
+  let resolutionUpdate: any = null
+  let finalText = ''
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured')
+  }
+
+  const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  })
+
+  // Convert messages to Claude format
+  const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
+    role: m.role,
+    content: m.content
+  }))
+
+  // Initial request to Claude with tools
+  let response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    tools: TOOLS,
+    messages: claudeMessages
+  })
+
+  console.log(`[Claude] Initial response stop_reason: ${response.stop_reason}`)
+
+  // Handle tool use in a loop
+  while (response.stop_reason === 'tool_use') {
+    const toolUseBlock = response.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+    )
+
+    if (!toolUseBlock) break
+
+    const toolName = toolUseBlock.name
+    const toolInput = toolUseBlock.input as any
+
+    console.log(`[Tool] Using: ${toolName}`)
+    toolsUsed.push(toolName)
+
+    // Execute the tool
+    const toolImpl = toolImplementations[toolName]
+    if (!toolImpl) {
+      console.error(`Unknown tool: ${toolName}`)
+      break
+    }
+
+    const toolResult = toolImpl(toolInput, resolutions)
+
+    if (toolResult.resolution) {
+      resolutionUpdate = toolResult.resolution
+    }
+
+    // Add assistant message and tool result to messages
+    claudeMessages.push({
+      role: 'assistant',
+      content: response.content
+    })
+
+    claudeMessages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: toolUseBlock.id,
+          content: JSON.stringify(toolResult)
+        }
+      ]
+    })
+
+    // Get next response from Claude
+    response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      tools: TOOLS,
+      messages: claudeMessages
+    })
+
+    console.log(`[Claude] Continued response stop_reason: ${response.stop_reason}`)
+  }
+
+  // Extract final text response
+  const textBlock = response.content.find(
+    (block): block is Anthropic.TextBlock => block.type === 'text'
+  )
+  finalText = textBlock?.text || "I'm ready to help with your resolutions!"
+
+  return {
+    text: finalText,
+    toolsUsed,
+    resolutionUpdate
+  }
+}
+
+// ============================================================================
+// API Handler
+// ============================================================================
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT')
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version')
 
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     res.status(200).end()
     return
   }
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' })
-    return
+  // Handle POST requests
+  if (req.method === 'POST') {
+    try {
+      const { message, conversationId } = req.body
+
+      // Validate input
+      if (!message || typeof message !== 'string') {
+        const resolutions = await loadResolutions()
+        return res.status(400).json({
+          error: 'Missing or invalid message',
+          resolutions: Array.from(resolutions.values()).filter(r => r.status === 'active')
+        })
+      }
+
+      // Generate or use conversation ID
+      const convId = conversationId || `conv-${uuidv4()}`
+
+      // Load state
+      const resolutions = await loadResolutions()
+      const messages = await loadConversation(convId)
+
+      // Add user message
+      messages.push({
+        role: 'user',
+        content: message
+      })
+
+      console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
+
+      // Get Claude's response with tools
+      const response = await handleChatMessage(messages, resolutions)
+
+      // Add assistant response
+      messages.push({
+        role: 'assistant',
+        content: response.text
+      })
+
+      // Save state
+      await saveResolutions(resolutions)
+      await saveConversation(convId, messages)
+
+      // Get current list of active resolutions
+      const allResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
+
+      console.log(`[Chat] Response sent. Tools used: ${response.toolsUsed.join(', ') || 'none'}`)
+      console.log(`[Chat] Active resolutions: ${allResolutions.length}`)
+
+      return res.status(200).json({
+        response: response.text,
+        conversationId: convId,
+        toolsUsed: response.toolsUsed,
+        resolutionUpdate: response.resolutionUpdate,
+        resolutions: allResolutions
+      })
+    } catch (error) {
+      console.error('[Chat] Error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Try to get resolutions even on error
+      let activeResolutions: any[] = []
+      try {
+        const resolutions = await loadResolutions()
+        activeResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
+      } catch (e) {
+        // Ignore errors loading resolutions
+      }
+
+      return res.status(500).json({
+        error: 'Failed to process message',
+        details: errorMessage,
+        resolutions: activeResolutions
+      })
+    }
   }
 
-  try {
-    console.log('=== Chat API Request ===')
-    console.log('Body:', req.body)
-
-    const { message, conversationId } = req.body
-
-    if (!message || typeof message !== 'string') {
-      console.log('Invalid message:', message)
-      res.status(400).json({ error: 'Message is required' })
-      return
-    }
-
-    console.log('Message received:', message.substring(0, 50))
-
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.error('ANTHROPIC_API_KEY not set')
-      res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
-      return
-    }
-
-    console.log('Importing dependencies...')
-    const Anthropic = (await import('@anthropic-ai/sdk')).default
-    const { v4: uuidv4 } = await import('uuid')
-
-    const convId = conversationId || uuidv4()
-    console.log('Conversation ID:', convId)
-
-    console.log('Creating Anthropic client...')
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
-
-    console.log('Calling Claude API...')
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 512,
-      system: `You are Turph's Resolution Coach. Help him create and manage personal goals.
-Today is ${new Date().toLocaleDateString()}.
-Keep responses concise and supportive.`,
-      messages: [
-        {
-          role: 'user',
-          content: message
-        }
-      ]
-    })
-
-    console.log('Claude response received')
-
-    const textBlock = response.content.find(
-      (block): block is any => block.type === 'text'
-    )
-    const text = textBlock?.text || 'Unable to generate response'
-
-    console.log('Response:', text.substring(0, 100))
-
-    res.status(200).json({
-      response: text,
-      conversationId: convId,
-      resolutions: [],
-      toolsUsed: []
-    })
-
-    console.log('=== Chat API Success ===')
-  } catch (error: any) {
-    console.error('=== Chat API Error ===')
-    console.error('Error type:', error?.constructor?.name)
-    console.error('Error message:', error?.message)
-    console.error('Error status:', error?.status)
-    console.error('Full error:', error)
-
-    res.status(500).json({
-      error: 'Failed to process request',
-      details: error?.message || String(error),
-      type: error?.constructor?.name
-    })
-  }
+  // Handle other methods
+  return res.status(405).json({
+    error: 'Method not allowed',
+    allowed: ['POST', 'OPTIONS']
+  })
 }

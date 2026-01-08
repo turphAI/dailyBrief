@@ -1,50 +1,54 @@
 #!/bin/bash
-echo "Building and arranging files..."
+set -e
 
-# Install root dependencies (needed for Vercel functions)
+echo "🏗️  Building Daily Brief..."
+echo ""
+
+# Install root dependencies (needed for Vercel serverless functions)
+echo "📦 Installing root dependencies..."
 npm install
 
-# Build index
+# Build index landing page
+echo "📦 Building landing page..."
 cd index
 npm install
 npm run build
 cd ..
 
-# Build w1 backend (for API functions)
-cd w1-resolution/backend
-npm install
-npm run build
-cd ../..
-
 # Build w1 frontend
+echo "📦 Building w1 frontend..."
 cd w1-resolution/frontend
 npm install
 npm run build
 cd ../..
 
 # Arrange static files
+echo "📁 Arranging static files..."
+rm -rf public
 mkdir -p public/w1
 
-# Copy landing page
+# Copy landing page to root
 cp -r index/dist/* public/
 
 # Copy w1 app
 cp -r w1-resolution/frontend/dist/* public/w1/
 
-# FIX: Remove favicon link since vite.svg doesn't exist
-sed -i.bak '/<link rel="icon"/d' public/w1/index.html
-rm -f public/w1/index.html.bak
-
-# Arrange API functions
-mkdir -p api
-cp -r w1-resolution/api/* api/ 2>/dev/null || true
-
-echo "✅ Build complete"
+# Remove favicon link if vite.svg doesn't exist
+if [ ! -f "public/w1/vite.svg" ]; then
+  sed -i.bak '/<link rel="icon"/d' public/w1/index.html 2>/dev/null || true
+  rm -f public/w1/index.html.bak
+fi
 
 echo ""
-echo "=== DEPLOYMENT STRUCTURE ==="
-echo "Static files:"
-find public -type f | head -10
+echo "✅ Build complete!"
 echo ""
-echo "API functions:"
-find api -type f | head -10
+echo "📂 Structure:"
+echo "   public/          - Static files"
+echo "   public/index.html  - Landing page"
+echo "   public/w1/         - Resolution tracker app"
+echo "   api/             - Serverless API functions"
+echo ""
+echo "📡 API endpoints:"
+echo "   POST /api/chat                      - Chat with Claude"
+echo "   GET  /api/chat/resolutions/list/all - List resolutions"
+echo "   GET  /api/health                    - Health check"
