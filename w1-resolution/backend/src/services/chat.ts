@@ -1,19 +1,9 @@
-import { Anthropic } from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
-
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+import { chatWithClaude } from './ai.js'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
-}
-
-interface Tool {
-  name: string
-  description: string
-  input_schema: any
 }
 
 interface ChatResponse {
@@ -127,87 +117,39 @@ const toolImplementations: Record<string, Function> = {
 export async function handleChatMessage(
   messages: Message[],
   systemPrompt: string,
-  tools: Tool[],
+  _tools: any,
   resolutions: Map<string, any>
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
 
   try {
-    // Initial Claude request
-    let response = await (client.beta.messages as any).create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: tools,
-      messages: messages
-    })
+    // Get Claude's response using the working API
+    const responseText = await chatWithClaude(
+      systemPrompt,
+      messages
+    )
 
-    console.log(`[Claude] Initial response stop_reason: ${response.stop_reason}`)
+    console.log(`[Claude] Response received`)
 
-    // Handle tool use in a loop
-    while (response.stop_reason === 'tool_use') {
-      const toolUseBlock = response.content.find((block: any) => block.type === 'tool_use')
+    // Parse Claude's intent from response and execute appropriate actions
+    const intent = parseResolutionIntent(responseText, messages)
+    
+    if (intent.action) {
+      console.log(`[Intent] Detected: ${intent.action}`)
+      toolsUsed.push(intent.action)
 
-      if (!toolUseBlock) break
-
-      const toolName = toolUseBlock.name
-      const toolInput = toolUseBlock.input
-
-      console.log(`[Tool] Using: ${toolName}`)
-      toolsUsed.push(toolName)
-
-      // Execute the tool
-      const toolImpl = toolImplementations[toolName]
-      if (!toolImpl) {
-        console.error(`Unknown tool: ${toolName}`)
-        break
+      const toolImpl = toolImplementations[intent.action]
+      if (toolImpl && intent.params) {
+        const result = toolImpl(intent.params, resolutions)
+        if (result.resolution) {
+          resolutionUpdate = result.resolution
+        }
       }
-
-      const toolResult = toolImpl(toolInput, resolutions)
-      
-      if (toolResult.resolution) {
-        resolutionUpdate = toolResult.resolution
-      }
-
-      // Add assistant response and tool result to messages for next iteration
-      const assistantMessage = {
-        role: 'assistant' as const,
-        content: response.content
-      }
-
-      const toolResultMessage = {
-        role: 'user' as const,
-        content: [
-          {
-            type: 'tool_result' as const,
-            tool_use_id: toolUseBlock.id,
-            content: JSON.stringify(toolResult)
-          }
-        ]
-      }
-
-      messages.push(assistantMessage)
-      messages.push(toolResultMessage)
-
-      // Get next response
-      response = await (client.beta.messages as any).create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools: tools,
-        messages: messages
-      })
-
-      console.log(`[Claude] Continued response stop_reason: ${response.stop_reason}`)
     }
 
-    // Extract final text response
-    const textContent = response.content.find((block: any) => block.type === 'text')
-    const finalText = textContent?.text || "I'm ready to help with your resolutions!"
-
     return {
-      text: finalText,
+      text: responseText,
       toolsUsed,
       resolutionUpdate
     }
@@ -217,3 +159,44 @@ export async function handleChatMessage(
   }
 }
 
+// Parse Claude's response to detect resolution management intents
+function parseResolutionIntent(
+  response: string,
+  messages: Message[]
+): { action?: string; params?: any } {
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+
+  // Look for explicit JSON structures or patterns in Claude's response
+  // that indicate a specific action
+  
+  // Pattern 1: Claude suggests a complete resolution with measurable criteria
+  if (
+    response.includes('create') &&
+    response.includes('resolution') &&
+    (lastUserMessage.includes('create') || lastUserMessage.includes('want') || lastUserMessage.includes('goal'))
+  ) {
+    // Extract title and measurable criteria from response
+    const titleMatch = response.match(/(?:Resolution|Goal):\s*"([^"]+)"|^([^.]+)/m)
+    const measurableMatch = response.match(/Measurable.*?:\s*"([^"]+)"|Daily:.*?(\d+)/i)
+
+    if (titleMatch || measurableMatch) {
+      return {
+        action: 'create_resolution',
+        params: {
+          title: titleMatch?.[1] || titleMatch?.[2] || 'New Resolution',
+          measurable_criteria: measurableMatch?.[1] || 'Track daily progress'
+        }
+      }
+    }
+  }
+
+  // Pattern 2: User is completing a resolution
+  if (
+    (lastUserMessage.includes('done') || lastUserMessage.includes('complete') || lastUserMessage.includes('finished')) &&
+    (response.includes('congratulations') || response.includes('completed'))
+  ) {
+    // This would need resolution ID context - skip for now
+  }
+
+  return {}
+}

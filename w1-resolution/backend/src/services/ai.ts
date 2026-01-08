@@ -39,3 +39,35 @@ Keep it concise and motivating.`
   }
 }
 
+export async function chatWithClaude(
+  systemPrompt: string,
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+): Promise<string> {
+  try {
+    // Combine system prompt with first user message
+    const enhancedMessages = [
+      {
+        role: 'user' as const,
+        content: systemPrompt + '\n\n---USER REQUEST---\n' + messages[0].content
+      },
+      ...messages.slice(1)
+    ]
+
+    const message = await (client.beta.messages as any).create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      messages: enhancedMessages
+    } as any)
+
+    const content = message.content[0]
+    if (content && content.type === 'text') {
+      return content.text
+    }
+    
+    return "I'm ready to help with your resolutions!"
+  } catch (error) {
+    console.error('Claude API error:', error)
+    throw error
+  }
+}
+

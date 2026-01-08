@@ -36,11 +36,11 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-    // Get Claude's response with tool use
+    // Get Claude's response
     const response = await handleChatMessage(
       conversation.messages,
       RESOLUTION_COACH_PROMPT,
-      TOOLS,
+      undefined,
       resolutions
     )
 
