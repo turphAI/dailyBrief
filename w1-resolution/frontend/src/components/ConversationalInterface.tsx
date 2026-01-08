@@ -29,6 +29,7 @@ export default function ConversationalInterface({
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [conversationId, setConversationId] = useState<string>()
 
   const handleSendMessage = async () => {
     if (!input.trim()) return
@@ -46,10 +47,6 @@ export default function ConversationalInterface({
     setIsLoading(true)
 
     try {
-      // Get current conversation ID from messages (use same one for continuity)
-      const lastMessage = messages[messages.length - 1]
-      const conversationId = (window as any).__convId || undefined
-
       const response = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +60,7 @@ export default function ConversationalInterface({
         const data = await response.json()
         
         // Store conversation ID for future messages
-        (window as any).__convId = data.conversationId
+        setConversationId(data.conversationId)
 
         // Add assistant response
         const assistantMessage: Message = {
