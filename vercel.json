@@ -1,12 +1,5 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
-  "functions": {
-    "api/chat.ts": {
-      "runtime": "nodejs18.x"
-    },
-    "api/chat/resolutions/list/all.ts": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  "outputDirectory": "public"
 }
