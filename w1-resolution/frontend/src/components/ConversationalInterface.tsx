@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -31,8 +32,12 @@ export default function ConversationalInterface({
   const [isLoading, setIsLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string>()
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    console.log('handleSendMessage called', { e, input, isLoading })
+    if (e) e.preventDefault()
     if (!input.trim()) return
+
+    console.log('Sending message:', input)
 
     // Add user message
     const userMessage: Message = {
@@ -43,6 +48,7 @@ export default function ConversationalInterface({
     }
 
     setMessages(prev => [...prev, userMessage])
+    const messageToSend = input
     setInput('')
     setIsLoading(true)
 
@@ -51,7 +57,7 @@ export default function ConversationalInterface({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: input,
+          message: messageToSend,
           conversationId: conversationId
         })
       })
@@ -117,8 +123,26 @@ export default function ConversationalInterface({
                   : 'bg-muted text-muted-foreground'
               }`}
             >
-              <p className="text-sm">{message.content}</p>
-              <span className="text-xs opacity-70 mt-1 block">
+              {message.type === 'user' ? (
+                <p className="text-sm">{message.content}</p>
+              ) : (
+                <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown
+                    components={{
+                      p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2" {...props} />,
+                      li: ({ node, ...props }) => <li className="mb-1" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                      em: ({ node, ...props }) => <em className="italic" {...props} />,
+                      code: ({ node, ...props }) => <code className="bg-opacity-20 bg-white px-1 rounded" {...props} />,
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+              )}
+              <span className="text-xs opacity-70 mt-2 block">
                 {message.timestamp.toLocaleTimeString([], { 
                   hour: '2-digit', 
                   minute: '2-digit' 
@@ -142,23 +166,22 @@ export default function ConversationalInterface({
 
       {/* Input Area */}
       <div className="border-t p-4 space-y-3">
-        <div className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="flex gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
             placeholder="Tell me about your resolution..."
             disabled={isLoading}
             className="flex-1"
           />
           <Button
-            onClick={handleSendMessage}
+            type="submit"
             disabled={isLoading || !input.trim()}
             size="icon"
           >
             <Send className="w-4 h-4" />
           </Button>
-        </div>
+        </form>
         <p className="text-xs text-muted-foreground">
           💡 Tip: Ask me to create, update, or delete resolutions. I'll help you stay focused with a maximum of 5 active resolutions.
         </p>
