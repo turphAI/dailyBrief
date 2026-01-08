@@ -46,18 +46,26 @@ export default function ConversationalInterface({
     setIsLoading(true)
 
     try {
-      // TODO: Connect to Claude API for conversational resolution creation/management
+      // Get current conversation ID from messages (use same one for continuity)
+      const lastMessage = messages[messages.length - 1]
+      const conversationId = (window as any).__convId || undefined
+
       const response = await fetch('http://localhost:3000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: input,
-          resolutions: resolutions
+          conversationId: conversationId
         })
       })
 
       if (response.ok) {
         const data = await response.json()
+        
+        // Store conversation ID for future messages
+        (window as any).__convId = data.conversationId
+
+        // Add assistant response
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           type: 'assistant',
@@ -66,10 +74,21 @@ export default function ConversationalInterface({
         }
         setMessages(prev => [...prev, assistantMessage])
 
-        // If a resolution was created, add it
-        if (data.resolution) {
-          setResolutions([...resolutions, data.resolution])
+        // If a resolution was created or updated, update state
+        if (data.resolutionUpdate) {
+          // Check if it's an update to existing resolution
+          const existingIndex = resolutions.findIndex(r => r.id === data.resolutionUpdate.id)
+          if (existingIndex >= 0) {
+            const updated = [...resolutions]
+            updated[existingIndex] = data.resolutionUpdate
+            setResolutions(updated)
+          } else {
+            // New resolution
+            setResolutions([...resolutions, data.resolutionUpdate])
+          }
         }
+      } else {
+        throw new Error('Failed to get response')
       }
     } catch (error) {
       console.error('Failed to send message:', error)
