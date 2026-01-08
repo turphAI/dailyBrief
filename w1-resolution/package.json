@@ -1,0 +1,23 @@
+{
+  "name": "resolution-tracker",
+  "version": "1.0.0",
+  "description": "AI-powered resolution tracker with Claude",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "dev": "vercel dev",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "resolution",
+    "tracker",
+    "ai",
+    "claude",
+    "anthropic"
+  ],
+  "author": "Tom Murphy",
+  "license": "MIT",
+  "devDependencies": {
+    "@vercel/node": "^3.1.0"
+  }
+}
