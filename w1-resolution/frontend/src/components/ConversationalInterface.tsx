@@ -56,7 +56,11 @@ export default function ConversationalInterface({
   useEffect(() => {
     const fetchResolutions = async () => {
       try {
-        const response = await fetch('/api/chat/resolutions/list/all')
+        // Use deployed API when in dev mode (localhost), otherwise use relative path
+        const apiBase = window.location.hostname === 'localhost' 
+          ? 'https://daily-brief-nu.vercel.app'
+          : ''
+        const response = await fetch(`${apiBase}/api/chat/resolutions/list/all`)
         if (response.ok) {
           const data = await response.json()
           if (data.resolutions && Array.isArray(data.resolutions)) {
@@ -92,7 +96,12 @@ export default function ConversationalInterface({
       setInput('')
       setIsLoading(true)
 
-      const response = await fetch('/api/chat', {
+      // Use deployed API when in dev mode (localhost), otherwise use relative path
+      const apiBase = window.location.hostname === 'localhost' 
+        ? 'https://daily-brief-nu.vercel.app'
+        : ''
+
+      const response = await fetch(`${apiBase}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
