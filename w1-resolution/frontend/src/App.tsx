@@ -4,7 +4,7 @@ import Dashboard from './pages/Dashboard'
 
 function App() {
   return (
-    <Router>
+    <Router basename="/w1">
       <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
         <header className="border-b">
