@@ -117,14 +117,16 @@ export default function StructuredInterface({
     </button>
   )
 
+  const isCollapsedLayout = navState === 'collapsed' || (navState === 'transition' && !isExpanded)
+
   return (
     <div className="flex flex-col h-full bg-muted/50">
       {/* Navigation */}
       <div 
-        className={`flex items-center gap-2 p-2 border-b transition-all duration-300 ${
-          navState === 'collapsed' || navState === 'transition' && !isExpanded
-            ? 'flex-col'
-            : 'flex-row'
+        className={`flex items-center gap-2 p-2 transition-all duration-300 ${
+          isCollapsedLayout
+            ? 'flex-col justify-center h-full'
+            : 'flex-row border-b'
         }`}
       >
         <NavButton 
@@ -151,7 +153,7 @@ export default function StructuredInterface({
           onClick={handleCollapseClick}
           disabled={!isClickable}
           className={`w-10 h-10 rounded-full bg-muted-foreground/20 flex items-center justify-center hover:bg-muted-foreground/30 transition-all duration-300 ${
-            navState === 'collapsed' ? 'mt-auto' : 'ml-auto'
+            isCollapsedLayout ? 'mt-4' : 'ml-auto'
           } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
         >
           {navState === 'open' || (navState === 'transition' && isExpanded) ? (
