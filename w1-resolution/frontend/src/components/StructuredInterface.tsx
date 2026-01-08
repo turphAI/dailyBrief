@@ -11,7 +11,7 @@ import {
 type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'settings'
 type NavState = 'collapsed' | 'transition' | 'open'
 
-const TRANSITION_DURATION = 500 // ms
+const TRANSITION_DURATION = 900 // ms
 
 interface StructuredInterfaceProps {
   resolutions: any[]
@@ -106,7 +106,7 @@ export default function StructuredInterface({
     <button
       onClick={() => handleNavClick(view)}
       disabled={!isClickable}
-      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 ${
+      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-[900ms] ${
         navState === 'open' && isActive
           ? 'bg-primary text-primary-foreground shadow-lg'
           : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -123,7 +123,7 @@ export default function StructuredInterface({
     <div className="flex flex-col h-full bg-muted/50">
       {/* Navigation */}
       <div 
-        className={`flex items-center gap-2 p-2 transition-all duration-500 ${
+        className={`flex items-center gap-2 p-2 transition-all duration-[900ms] ${
           isCollapsedLayout
             ? 'flex-col justify-center h-full'
             : 'flex-row border-b'
@@ -152,7 +152,7 @@ export default function StructuredInterface({
         <button
           onClick={handleCollapseClick}
           disabled={!isClickable}
-          className={`w-10 h-10 rounded-full bg-muted-foreground/20 flex items-center justify-center hover:bg-muted-foreground/30 transition-all duration-500 ${
+          className={`w-10 h-10 rounded-full bg-muted-foreground/20 flex items-center justify-center hover:bg-muted-foreground/30 transition-all duration-[900ms] ${
             isCollapsedLayout ? 'mt-4' : 'ml-auto'
           } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
         >
@@ -166,7 +166,7 @@ export default function StructuredInterface({
 
       {/* Content Area */}
       <div 
-        className={`flex-1 overflow-hidden transition-all duration-500 ${
+        className={`flex-1 overflow-hidden transition-all duration-[900ms] ${
           navState === 'open' ? 'opacity-100' : 'opacity-0'
         }`}
       >
