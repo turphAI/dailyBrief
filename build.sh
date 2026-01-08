@@ -1,6 +1,9 @@
 #!/bin/bash
 echo "Building and arranging files..."
 
+# Install root dependencies (needed for Vercel functions)
+npm install
+
 # Build index
 cd index
 npm install
