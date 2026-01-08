@@ -1,5 +1,6 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "packageManager": "npm@latest"
 }
