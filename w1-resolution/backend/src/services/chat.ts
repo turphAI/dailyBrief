@@ -1,5 +1,9 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
-import { chatWithClaude } from './ai.js'
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+})
 
 interface Message {
   role: 'user' | 'assistant'
@@ -12,10 +16,106 @@ interface ChatResponse {
   resolutionUpdate?: any
 }
 
+// Tool definitions for Claude
+const TOOLS = [
+  {
+    name: 'create_resolution',
+    description: 'Create a new active resolution with measurable criteria',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'The resolution title (e.g., "Exercise 3 times per week")'
+        },
+        measurable_criteria: {
+          type: 'string',
+          description: 'How to measure success (e.g., "3 workouts per week for 52 weeks")'
+        },
+        context: {
+          type: 'string',
+          description: 'Brief context about why this matters (optional)'
+        }
+      },
+      required: ['title', 'measurable_criteria']
+    }
+  },
+  {
+    name: 'list_resolutions',
+    description: 'Get the current list of active resolutions to check status, limits, and duplicates',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['active', 'completed', 'all'],
+          description: 'Which resolutions to list'
+        }
+      },
+      required: ['status']
+    }
+  },
+  {
+    name: 'complete_resolution',
+    description: 'Mark a resolution as completed',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The resolution ID'
+        }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'delete_resolution',
+    description: 'Delete a resolution',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The resolution ID to delete'
+        }
+      },
+      required: ['id']
+    }
+  }
+]
+
+const SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
+
+## Your Role
+Help Turph create, manage, and achieve meaningful resolutions through thoughtful conversation.
+
+## Core Rules
+1. **Resolution Limit**: Maximum 5 ACTIVE resolutions at any time
+2. **Measurable**: Every resolution MUST include specific, measurable criteria
+3. **Realistic**: Resolutions should be achievable within 1 year
+4. **Clarity**: Push back on vague goals - ask clarifying questions
+
+## Your Conversational Style
+- Be encouraging but honest
+- Challenge vague resolutions with specific questions
+- Help refine resolutions before creating them
+- Celebrate progress and completed resolutions
+- Never create a resolution without measurable criteria
+
+## How to Respond
+1. When user suggests a resolution, ask clarifying questions if needed
+2. Refine it together conversationally
+3. Once solid, use the create_resolution tool
+4. Always explain what you're doing in plain language
+5. If user hits the 5-resolution limit, suggest reviewing existing ones
+6. Use list_resolutions to check current status before creating new ones
+
+Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
+
 // Tool implementations
 const toolImplementations: Record<string, Function> = {
   create_resolution: (input: any, resolutions: Map<string, any>) => {
-    // Check if at limit
     const activeResolutions = Array.from(resolutions.values()).filter(
       (r: any) => r.status === 'active'
     )
@@ -40,44 +140,7 @@ const toolImplementations: Record<string, Function> = {
 
     resolutions.set(id, resolution)
     console.log(`✅ Created resolution: ${input.title}`)
-    return { success: true, resolution }
-  },
-
-  update_resolution: (input: any, resolutions: Map<string, any>) => {
-    const resolution = resolutions.get(input.id)
-    if (!resolution) {
-      return { success: false, error: 'Resolution not found' }
-    }
-
-    if (input.title) resolution.title = input.title
-    if (input.measurable_criteria) resolution.measurable_criteria = input.measurable_criteria
-
-    console.log(`📝 Updated resolution: ${input.id}`)
-    return { success: true, resolution }
-  },
-
-  complete_resolution: (input: any, resolutions: Map<string, any>) => {
-    const resolution = resolutions.get(input.id)
-    if (!resolution) {
-      return { success: false, error: 'Resolution not found' }
-    }
-
-    resolution.status = 'completed'
-    resolution.completedAt = new Date().toISOString()
-
-    console.log(`🎉 Completed resolution: ${resolution.title}`)
-    return { success: true, resolution }
-  },
-
-  delete_resolution: (input: any, resolutions: Map<string, any>) => {
-    const resolution = resolutions.get(input.id)
-    if (!resolution) {
-      return { success: false, error: 'Resolution not found' }
-    }
-
-    resolutions.delete(input.id)
-    console.log(`🗑️ Deleted resolution: ${resolution.title}`)
-    return { success: true, message: 'Resolution deleted' }
+    return { success: true, resolution, message: `Created resolution: "${input.title}"` }
   },
 
   list_resolutions: (input: any, resolutions: Map<string, any>) => {
@@ -90,66 +153,131 @@ const toolImplementations: Record<string, Function> = {
       filtered = all.filter((r: any) => r.status === 'completed')
     }
 
+    console.log(`📋 Listed ${filtered.length} ${input.status} resolutions`)
     return {
       success: true,
       count: filtered.length,
-      resolutions: filtered
+      resolutions: filtered,
+      message: `Found ${filtered.length} ${input.status} resolutions`
     }
   },
 
-  add_progress_update: (input: any, resolutions: Map<string, any>) => {
+  complete_resolution: (input: any, resolutions: Map<string, any>) => {
     const resolution = resolutions.get(input.id)
     if (!resolution) {
       return { success: false, error: 'Resolution not found' }
     }
 
-    resolution.updates.push({
-      id: uuidv4(),
-      text: input.update,
-      timestamp: new Date().toISOString()
-    })
+    resolution.status = 'completed'
+    resolution.completedAt = new Date().toISOString()
 
-    console.log(`📊 Added update to: ${resolution.title}`)
-    return { success: true, resolution }
+    console.log(`🎉 Completed resolution: ${resolution.title}`)
+    return { success: true, resolution, message: `Completed: "${resolution.title}" 🎉` }
+  },
+
+  delete_resolution: (input: any, resolutions: Map<string, any>) => {
+    const resolution = resolutions.get(input.id)
+    if (!resolution) {
+      return { success: false, error: 'Resolution not found' }
+    }
+
+    const title = resolution.title
+    resolutions.delete(input.id)
+    console.log(`🗑️ Deleted resolution: ${title}`)
+    return { success: true, message: `Deleted resolution: "${title}"` }
   }
 }
 
 export async function handleChatMessage(
   messages: Message[],
-  systemPrompt: string,
-  _tools: any,
   resolutions: Map<string, any>
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
+  let finalText = ''
 
   try {
-    // Get Claude's response using the working API
-    const responseText = await chatWithClaude(
-      systemPrompt,
-      messages
-    )
+    // Convert messages to Claude format
+    const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
 
-    console.log(`[Claude] Response received`)
+    // Initial request to Claude with tools
+    let response = await client.messages.create({
+      model: 'claude-opus-4-1-20250805',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      tools: TOOLS as Anthropic.Tool[],
+      messages: claudeMessages
+    })
 
-    // Parse Claude's intent from response and execute appropriate actions
-    const intent = parseResolutionIntent(responseText, messages)
-    
-    if (intent.action) {
-      console.log(`[Intent] Detected: ${intent.action}`)
-      toolsUsed.push(intent.action)
+    console.log(`[Claude] Initial response stop_reason: ${response.stop_reason}`)
 
-      const toolImpl = toolImplementations[intent.action]
-      if (toolImpl && intent.params) {
-        const result = toolImpl(intent.params, resolutions)
-        if (result.resolution) {
-          resolutionUpdate = result.resolution
-        }
+    // Handle tool use in a loop
+    while (response.stop_reason === 'tool_use') {
+      const toolUseBlock = response.content.find(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+      )
+
+      if (!toolUseBlock) break
+
+      const toolName = toolUseBlock.name
+      const toolInput = toolUseBlock.input as any
+
+      console.log(`[Tool] Using: ${toolName}`)
+      toolsUsed.push(toolName)
+
+      // Execute the tool
+      const toolImpl = toolImplementations[toolName]
+      if (!toolImpl) {
+        console.error(`Unknown tool: ${toolName}`)
+        break
       }
+
+      const toolResult = toolImpl(toolInput, resolutions)
+
+      if (toolResult.resolution) {
+        resolutionUpdate = toolResult.resolution
+      }
+
+      // Add assistant message and tool result to messages
+      claudeMessages.push({
+        role: 'assistant',
+        content: response.content
+      })
+
+      claudeMessages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseBlock.id,
+            content: JSON.stringify(toolResult)
+          }
+        ]
+      })
+
+      // Get next response from Claude
+      response = await client.messages.create({
+        model: 'claude-opus-4-1-20250805',
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        tools: TOOLS as Anthropic.Tool[],
+        messages: claudeMessages
+      })
+
+      console.log(`[Claude] Continued response stop_reason: ${response.stop_reason}`)
     }
 
+    // Extract final text response
+    const textBlock = response.content.find(
+      (block): block is Anthropic.TextBlock => block.type === 'text'
+    )
+    finalText = textBlock?.text || "I'm ready to help with your resolutions!"
+
     return {
-      text: responseText,
+      text: finalText,
       toolsUsed,
       resolutionUpdate
     }
@@ -157,46 +285,4 @@ export async function handleChatMessage(
     console.error('Claude API error:', error)
     throw error
   }
-}
-
-// Parse Claude's response to detect resolution management intents
-function parseResolutionIntent(
-  response: string,
-  messages: Message[]
-): { action?: string; params?: any } {
-  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
-
-  // Look for explicit JSON structures or patterns in Claude's response
-  // that indicate a specific action
-  
-  // Pattern 1: Claude suggests a complete resolution with measurable criteria
-  if (
-    response.includes('create') &&
-    response.includes('resolution') &&
-    (lastUserMessage.includes('create') || lastUserMessage.includes('want') || lastUserMessage.includes('goal'))
-  ) {
-    // Extract title and measurable criteria from response
-    const titleMatch = response.match(/(?:Resolution|Goal):\s*"([^"]+)"|^([^.]+)/m)
-    const measurableMatch = response.match(/Measurable.*?:\s*"([^"]+)"|Daily:.*?(\d+)/i)
-
-    if (titleMatch || measurableMatch) {
-      return {
-        action: 'create_resolution',
-        params: {
-          title: titleMatch?.[1] || titleMatch?.[2] || 'New Resolution',
-          measurable_criteria: measurableMatch?.[1] || 'Track daily progress'
-        }
-      }
-    }
-  }
-
-  // Pattern 2: User is completing a resolution
-  if (
-    (lastUserMessage.includes('done') || lastUserMessage.includes('complete') || lastUserMessage.includes('finished')) &&
-    (response.includes('congratulations') || response.includes('completed'))
-  ) {
-    // This would need resolution ID context - skip for now
-  }
-
-  return {}
 }

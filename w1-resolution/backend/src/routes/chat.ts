@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import { RESOLUTION_COACH_PROMPT, TOOLS } from '../prompts/systemPrompt.js'
 import { handleChatMessage } from '../services/chat.js'
 
 const router = express.Router()
@@ -36,11 +35,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-    // Get Claude's response
+    // Get Claude's response with tool use
     const response = await handleChatMessage(
       conversation.messages,
-      RESOLUTION_COACH_PROMPT,
-      undefined,
       resolutions
     )
 
