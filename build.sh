@@ -29,3 +29,4 @@ cp -r w1-resolution/frontend/dist/* public/w1/
 echo ""
 echo "✅ Build complete!"
 echo "   public/ ready for deployment"
+# Deployment trigger: Thu Jan  8 09:37:43 EST 2026
