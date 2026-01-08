@@ -4,7 +4,6 @@ import ResolutionRadar from './ResolutionRadar'
 import ResolutionDetailView from './ResolutionDetailView'
 import {
   resolutionToRadarData,
-  calculateOverallHealth,
   categorizeTier,
   calculateProgress,
 } from '../utils/resolutionViz'
@@ -29,7 +28,6 @@ export default function StructuredInterface({
   const completedResolutions = resolutions.filter((r: any) => r.status === 'completed')
 
   const radarData = resolutionToRadarData(activeResolutions)
-  const health = calculateOverallHealth(activeResolutions)
   const selectedResolution = activeResolutions.find(
     (r: any) => r.id === selectedResolutionId
   )
@@ -120,48 +118,6 @@ export default function StructuredInterface({
                   Overview of your resolution progress
                 </p>
               </div>
-
-              {/* Health Summary */}
-              {activeResolutions.length > 0 && (
-                <div className="bg-background border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">
-                      Overall Progress
-                    </span>
-                    <span className="text-base font-semibold text-primary">
-                      {health.averageProgress}%
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{ width: `${health.averageProgress}%` }}
-                    />
-                  </div>
-
-                  {/* Tier Breakdown */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t text-xs">
-                    <div className="text-center">
-                      <div className="font-semibold text-foreground">
-                        {health.immediateCount}
-                      </div>
-                      <div className="text-muted-foreground">Immediate</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="font-semibold text-foreground">
-                        {health.secondaryCount}
-                      </div>
-                      <div className="text-muted-foreground">Secondary</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="font-semibold text-foreground">
-                        {health.maintenanceCount}
-                      </div>
-                      <div className="text-muted-foreground">Maintenance</div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Radar Chart */}
               {activeResolutions.length > 0 ? (
