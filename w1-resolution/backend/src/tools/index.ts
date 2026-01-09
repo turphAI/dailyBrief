@@ -5,4 +5,10 @@ export { listResolutions } from './listResolutions'
 export { completeResolution } from './completeResolution'
 export { deleteResolution } from './deleteResolution'
 export { prioritizeResolutions } from './prioritizeResolutions'
-export type { ToolInput, ToolOutput, ToolResult } from './types'
+
+// Tools for update/reminder system
+export { configureUpdates } from './configureUpdates'
+export { logUpdate } from './logUpdate'
+
+// Types
+export type { ToolInput, ToolOutput, ToolResult, Resolution, Update, UserPreferences } from './types'

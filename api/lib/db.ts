@@ -11,6 +11,18 @@ import { createClient, RedisClientType } from 'redis'
 // Types
 // ============================================================================
 
+export interface ResolutionUpdateSettings {
+  enabled: boolean              // Override global setting for this resolution
+  cadenceOverride?: {
+    checkInDays: number[]       // 0-6, days of week
+    preferredTimeUTC: string    // "14:00"
+  }
+  lastNudgeAt: string | null    // ISO timestamp
+  nextNudgeAt: string | null    // ISO timestamp
+  nudgeCount: number            // Total nudges sent
+  responseRate: number          // 0-1, calculated from responses
+}
+
 export interface Resolution {
   id: string
   title: string
@@ -21,7 +33,7 @@ export interface Resolution {
   updatedAt?: string
   completedAt?: string
   updates: Update[]
-  // Future: updateSettings for nudge configuration
+  updateSettings: ResolutionUpdateSettings
 }
 
 export interface Update {
@@ -29,9 +41,31 @@ export interface Update {
   type: 'progress' | 'setback' | 'milestone' | 'note' | 'check_in_response'
   content: string
   sentiment?: 'positive' | 'neutral' | 'struggling'
-  progressDelta?: number
+  progressDelta?: number        // -100 to 100
   createdAt: string
   triggeredBy?: 'user' | 'nudge' | 'sms'
+}
+
+export interface NudgeRecord {
+  id: string
+  resolutionId: string
+  
+  // Delivery
+  channel: 'in_conversation' | 'sms'
+  scheduledAt: string
+  deliveredAt: string | null
+  status: 'scheduled' | 'delivered' | 'responded' | 'skipped' | 'failed'
+  
+  // Content
+  type: 'check_in' | 'encouragement' | 'milestone' | 'streak' | 'gentle_nudge'
+  message: string
+  
+  // Response tracking
+  responseAt: string | null
+  responseContent: string | null
+  responseSentiment: 'positive' | 'neutral' | 'struggling' | null
+  
+  createdAt: string
 }
 
 export interface Message {
@@ -43,6 +77,18 @@ export interface DatabaseHealth {
   connected: boolean
   latencyMs: number
   error?: string
+}
+
+// ============================================================================
+// Default Values
+// ============================================================================
+
+export const DEFAULT_UPDATE_SETTINGS: ResolutionUpdateSettings = {
+  enabled: true,
+  lastNudgeAt: null,
+  nextNudgeAt: null,
+  nudgeCount: 0,
+  responseRate: 0
 }
 
 // ============================================================================
@@ -169,6 +215,16 @@ const RESOLUTIONS_SET_KEY = 'resolutions:all'
 const RESOLUTION_KEY_PREFIX = 'resolution:'
 
 /**
+ * Ensure resolution has updateSettings (migration helper)
+ */
+function ensureUpdateSettings(resolution: any): Resolution {
+  if (!resolution.updateSettings) {
+    resolution.updateSettings = { ...DEFAULT_UPDATE_SETTINGS }
+  }
+  return resolution as Resolution
+}
+
+/**
  * Load all resolutions from database.
  * Returns empty Map if no resolutions exist.
  * Throws DatabaseError if connection fails.
@@ -193,7 +249,7 @@ export async function loadResolutions(): Promise<Map<string, Resolution>> {
     const data = results[i]
     if (data) {
       try {
-        const resolution = JSON.parse(data) as Resolution
+        const resolution = ensureUpdateSettings(JSON.parse(data))
         resolutions.set(resolution.id, resolution)
       } catch (e) {
         console.error(`[DB] Failed to parse resolution ${ids[i]}:`, e)
@@ -296,7 +352,7 @@ export async function saveConversation(conversationId: string, messages: Message
 }
 
 // ============================================================================
-// Future: Preferences (stubbed for Phase 1)
+// Preferences
 // ============================================================================
 
 const PREFERENCES_KEY = 'preferences'
@@ -378,4 +434,135 @@ export async function savePreferences(preferences: UserPreferences): Promise<voi
   preferences.updatedAt = new Date().toISOString()
   await client.set(PREFERENCES_KEY, JSON.stringify(preferences))
   console.log('[DB] Saved preferences')
+}
+
+// ============================================================================
+// Nudge Records
+// ============================================================================
+
+const NUDGE_KEY_PREFIX = 'nudge:'
+const NUDGES_BY_RESOLUTION_PREFIX = 'nudges:resolution:'
+const NUDGES_SCHEDULED_KEY = 'nudges:scheduled'
+
+/**
+ * Save a nudge record.
+ */
+export async function saveNudge(nudge: NudgeRecord): Promise<void> {
+  const client = await getClient()
+  
+  const pipeline = client.multi()
+  
+  // Save nudge data
+  pipeline.set(`${NUDGE_KEY_PREFIX}${nudge.id}`, JSON.stringify(nudge))
+  
+  // Add to resolution's nudge list
+  pipeline.sAdd(`${NUDGES_BY_RESOLUTION_PREFIX}${nudge.resolutionId}`, nudge.id)
+  
+  // Add to scheduled set if scheduled
+  if (nudge.status === 'scheduled') {
+    pipeline.zAdd(NUDGES_SCHEDULED_KEY, {
+      score: new Date(nudge.scheduledAt).getTime(),
+      value: nudge.id
+    })
+  }
+  
+  await pipeline.exec()
+  console.log(`[DB] Saved nudge: ${nudge.id} for resolution ${nudge.resolutionId}`)
+}
+
+/**
+ * Load a nudge by ID.
+ */
+export async function loadNudge(nudgeId: string): Promise<NudgeRecord | null> {
+  const client = await getClient()
+  const data = await client.get(`${NUDGE_KEY_PREFIX}${nudgeId}`)
+  
+  if (!data) {
+    return null
+  }
+
+  try {
+    return JSON.parse(data) as NudgeRecord
+  } catch (e) {
+    console.error(`[DB] Failed to parse nudge ${nudgeId}:`, e)
+    return null
+  }
+}
+
+/**
+ * Load all nudges for a resolution.
+ */
+export async function loadNudgesForResolution(resolutionId: string): Promise<NudgeRecord[]> {
+  const client = await getClient()
+  const ids = await client.sMembers(`${NUDGES_BY_RESOLUTION_PREFIX}${resolutionId}`)
+  
+  if (ids.length === 0) {
+    return []
+  }
+
+  const results = await Promise.all(
+    ids.map(id => client.get(`${NUDGE_KEY_PREFIX}${id}`))
+  )
+
+  const nudges: NudgeRecord[] = []
+  for (const data of results) {
+    if (data) {
+      try {
+        nudges.push(JSON.parse(data) as NudgeRecord)
+      } catch (e) {
+        // Skip invalid records
+      }
+    }
+  }
+
+  return nudges.sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+}
+
+/**
+ * Update a nudge record (e.g., mark as delivered or responded).
+ */
+export async function updateNudge(nudge: NudgeRecord): Promise<void> {
+  const client = await getClient()
+  
+  // If no longer scheduled, remove from scheduled set
+  if (nudge.status !== 'scheduled') {
+    await client.zRem(NUDGES_SCHEDULED_KEY, nudge.id)
+  }
+  
+  await client.set(`${NUDGE_KEY_PREFIX}${nudge.id}`, JSON.stringify(nudge))
+  console.log(`[DB] Updated nudge: ${nudge.id} status=${nudge.status}`)
+}
+
+/**
+ * Get scheduled nudges that are due (scheduledAt <= now).
+ */
+export async function getDueNudges(): Promise<NudgeRecord[]> {
+  const client = await getClient()
+  const now = Date.now()
+  
+  // Get all nudge IDs with score <= now
+  const ids = await client.zRangeByScore(NUDGES_SCHEDULED_KEY, 0, now)
+  
+  if (ids.length === 0) {
+    return []
+  }
+
+  const results = await Promise.all(
+    ids.map(id => client.get(`${NUDGE_KEY_PREFIX}${id}`))
+  )
+
+  const nudges: NudgeRecord[] = []
+  for (const data of results) {
+    if (data) {
+      try {
+        nudges.push(JSON.parse(data) as NudgeRecord)
+      } catch (e) {
+        // Skip invalid records
+      }
+    }
+  }
+
+  return nudges
 }

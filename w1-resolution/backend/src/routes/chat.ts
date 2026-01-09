@@ -12,8 +12,11 @@ import {
   saveResolutions,
   loadConversation,
   saveConversation,
+  loadPreferences,
+  savePreferences,
   DatabaseError,
-  type Resolution
+  type Resolution,
+  type UserPreferences
 } from '../lib/db.js'
 
 const router = express.Router()
@@ -35,10 +38,12 @@ router.post('/', async (req: Request, res: Response) => {
     
     // Load state from database (no fallback)
     let resolutions: Map<string, Resolution>
+    let preferences: UserPreferences
     let conversation: any
     
     try {
       resolutions = await loadResolutions()
+      preferences = await loadPreferences()
       const messages = await loadConversation(convId)
       conversation = {
         id: convId,
@@ -69,7 +74,8 @@ router.post('/', async (req: Request, res: Response) => {
     // Get Claude's response with tool use
     const response = await handleChatMessage(
       conversation.messages,
-      resolutions
+      resolutions,
+      preferences
     )
 
     // Add assistant response to conversation
@@ -82,6 +88,11 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       await saveResolutions(resolutions)
       await saveConversation(convId, conversation.messages)
+      
+      // Save preferences if they were updated
+      if (response.preferencesUpdate) {
+        await savePreferences(response.preferencesUpdate)
+      }
     } catch (error) {
       if (error instanceof DatabaseError) {
         console.error('[Chat] Failed to save state:', error.details)

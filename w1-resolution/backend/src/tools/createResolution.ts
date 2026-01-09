@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { ToolResult, Resolution } from './types'
+import { DEFAULT_UPDATE_SETTINGS } from '../lib/db.js'
 
 /**
  * Create a new resolution with measurable criteria
@@ -38,7 +39,8 @@ export function createResolution(input: any, resolutions: Map<string, Resolution
       status: 'active',
       createdAt: new Date().toISOString(),
       updates: [],
-      completedAt: undefined
+      completedAt: undefined,
+      updateSettings: { ...DEFAULT_UPDATE_SETTINGS }
     }
 
     resolutions.set(id, resolution)

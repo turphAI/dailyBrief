@@ -1,4 +1,4 @@
-import type { Resolution } from '../lib/db.js'
+import type { Resolution, Update, UserPreferences, NudgeRecord, ResolutionUpdateSettings } from '../lib/db.js'
 
 export interface ToolInput {
   [key: string]: any
@@ -11,6 +11,8 @@ export interface ToolResult {
   resolution?: Resolution | any  // Resolution or strategy object for prioritize
   count?: number
   resolutions?: Resolution[]
+  preferences?: UserPreferences
+  update?: Update
 }
 
 export interface ToolOutput {
@@ -18,5 +20,11 @@ export interface ToolOutput {
   resolution?: Resolution
 }
 
-// Re-export Resolution type for convenience
-export type { Resolution } from '../lib/db.js'
+// Re-export types from db for convenience
+export type { 
+  Resolution, 
+  Update, 
+  UserPreferences, 
+  NudgeRecord,
+  ResolutionUpdateSettings 
+} from '../lib/db.js'

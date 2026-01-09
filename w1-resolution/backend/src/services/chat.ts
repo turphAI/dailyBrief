@@ -5,9 +5,11 @@ import {
   listResolutions, 
   completeResolution, 
   deleteResolution,
-  prioritizeResolutions
+  prioritizeResolutions,
+  configureUpdates,
+  logUpdate
 } from '../tools/index'
-import type { Resolution } from '../lib/db.js'
+import type { Resolution, UserPreferences } from '../lib/db.js'
 
 let client: Anthropic | null = null
 
@@ -32,6 +34,7 @@ interface ChatResponse {
   text: string
   toolsUsed: string[]
   resolutionUpdate?: any
+  preferencesUpdate?: UserPreferences
 }
 
 // Tool definitions for Claude
@@ -152,6 +155,72 @@ const TOOLS = [
       },
       required: []
     }
+  },
+  {
+    name: 'configure_updates',
+    description: 'Configure the update/reminder system for resolutions. Can enable/disable globally or per-resolution, and adjust frequency settings.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['enable', 'disable', 'configure', 'status'],
+          description: 'Action to perform on updates'
+        },
+        scope: {
+          type: 'string',
+          enum: ['global', 'resolution'],
+          description: 'Apply globally or to a specific resolution'
+        },
+        resolution_id: {
+          type: 'string',
+          description: 'Required if scope is "resolution"'
+        },
+        frequency: {
+          type: 'string',
+          enum: ['gentle', 'moderate', 'persistent'],
+          description: 'How often to send nudges (gentle=weekly, moderate=every few days, persistent=daily)'
+        },
+        channel: {
+          type: 'string',
+          enum: ['in_conversation', 'sms', 'all'],
+          description: 'Which channel to configure'
+        }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'log_update',
+    description: 'Log a progress update, setback, milestone, or note for a resolution. Use this when the user shares progress or struggles.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: {
+          type: 'string',
+          description: 'The resolution to update'
+        },
+        type: {
+          type: 'string',
+          enum: ['progress', 'setback', 'milestone', 'note'],
+          description: 'Type of update'
+        },
+        content: {
+          type: 'string',
+          description: 'Summary of the update (what happened, what was achieved)'
+        },
+        sentiment: {
+          type: 'string',
+          enum: ['positive', 'neutral', 'struggling'],
+          description: 'User sentiment detected from their message'
+        },
+        progress_delta: {
+          type: 'number',
+          description: 'Optional progress change percentage (-100 to 100)'
+        }
+      },
+      required: ['resolution_id', 'type', 'content']
+    }
   }
 ]
 
@@ -181,25 +250,54 @@ Help Turph create, manage, and achieve meaningful resolutions through thoughtful
 5. If user hits the 5-resolution limit, suggest reviewing existing ones
 6. Use list_resolutions to check current status before creating new ones
 
+## Progress Tracking
+When Turph shares progress, struggles, or updates about their resolutions:
+1. Acknowledge what they shared with empathy
+2. Use log_update to record the update (progress, setback, milestone, or note)
+3. Detect sentiment (positive, neutral, struggling) and respond appropriately
+4. For setbacks, be supportive and help identify blockers
+5. For progress, celebrate and reinforce the positive behavior
+
+## Update/Reminder Settings
+Turph can configure reminder preferences via conversation:
+- "Turn on/off reminders" → use configure_updates
+- "Remind me about X more/less often" → configure per-resolution
+- "What are my reminder settings?" → show status
+- Frequency options: gentle (weekly), moderate (every few days), persistent (daily)
+
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
 
-// Tool implementations
-const toolImplementations: Record<string, Function> = {
-  create_resolution: createResolution,
-  edit_resolution: editResolution,
-  list_resolutions: listResolutions,
-  complete_resolution: completeResolution,
-  delete_resolution: deleteResolution,
-  prioritize_resolutions: prioritizeResolutions
-}
+// Tool implementations - some need preferences
+const getToolImplementations = (preferences: UserPreferences) => ({
+  create_resolution: (input: any, resolutions: Map<string, Resolution>) => 
+    createResolution(input, resolutions),
+  edit_resolution: (input: any, resolutions: Map<string, Resolution>) => 
+    editResolution(input, resolutions),
+  list_resolutions: (input: any, resolutions: Map<string, Resolution>) => 
+    listResolutions(input, resolutions),
+  complete_resolution: (input: any, resolutions: Map<string, Resolution>) => 
+    completeResolution(input, resolutions),
+  delete_resolution: (input: any, resolutions: Map<string, Resolution>) => 
+    deleteResolution(input, resolutions),
+  prioritize_resolutions: (input: any, resolutions: Map<string, Resolution>) => 
+    prioritizeResolutions(input, resolutions),
+  configure_updates: (input: any, resolutions: Map<string, Resolution>) => 
+    configureUpdates(input, resolutions, preferences),
+  log_update: (input: any, resolutions: Map<string, Resolution>) => 
+    logUpdate(input, resolutions)
+})
 
 export async function handleChatMessage(
   messages: Message[],
-  resolutions: Map<string, Resolution>
+  resolutions: Map<string, Resolution>,
+  preferences: UserPreferences
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
+  let preferencesUpdate: UserPreferences | undefined = undefined
   let finalText = ''
+
+  const toolImplementations = getToolImplementations(preferences)
 
   try {
     // Convert messages to Claude format
@@ -235,7 +333,7 @@ export async function handleChatMessage(
       toolsUsed.push(toolName)
 
       // Execute the tool
-      const toolImpl = toolImplementations[toolName]
+      const toolImpl = toolImplementations[toolName as keyof typeof toolImplementations]
       if (!toolImpl) {
         console.error(`Unknown tool: ${toolName}`)
         break
@@ -245,6 +343,10 @@ export async function handleChatMessage(
 
       if (toolResult.resolution) {
         resolutionUpdate = toolResult.resolution
+      }
+
+      if (toolResult.preferences) {
+        preferencesUpdate = toolResult.preferences
       }
 
       // Add assistant message and tool result to messages
@@ -285,7 +387,8 @@ export async function handleChatMessage(
     return {
       text: finalText,
       toolsUsed,
-      resolutionUpdate
+      resolutionUpdate,
+      preferencesUpdate
     }
   } catch (error) {
     console.error('Claude API error:', error)

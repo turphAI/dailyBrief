@@ -13,13 +13,18 @@ import {
   saveResolutions,
   loadConversation,
   saveConversation,
+  loadPreferences,
+  savePreferences,
   DatabaseError,
+  DEFAULT_UPDATE_SETTINGS,
   type Resolution,
-  type Message
+  type Message,
+  type UserPreferences,
+  type Update
 } from './lib/db'
 
 // ============================================================================
-// Tool Implementations
+// Tool Result Interface
 // ============================================================================
 
 interface ToolResult {
@@ -29,7 +34,13 @@ interface ToolResult {
   resolution?: any
   count?: number
   resolutions?: any[]
+  preferences?: UserPreferences
+  update?: Update
 }
+
+// ============================================================================
+// Tool Implementations
+// ============================================================================
 
 function createResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
@@ -62,7 +73,8 @@ function createResolution(input: any, resolutions: Map<string, Resolution>): Too
       status: 'active',
       createdAt: new Date().toISOString(),
       updates: [],
-      completedAt: undefined
+      completedAt: undefined,
+      updateSettings: { ...DEFAULT_UPDATE_SETTINGS }
     }
 
     resolutions.set(id, resolution)
@@ -322,14 +334,147 @@ function prioritizeResolutions(input: any, resolutions: Map<string, Resolution>)
   }
 }
 
-// Tool mapping
-const toolImplementations: Record<string, (input: any, resolutions: Map<string, Resolution>) => ToolResult> = {
-  create_resolution: createResolution,
-  edit_resolution: editResolution,
-  list_resolutions: listResolutions,
-  complete_resolution: completeResolution,
-  delete_resolution: deleteResolution,
-  prioritize_resolutions: prioritizeResolutions
+function configureUpdates(
+  input: any,
+  resolutions: Map<string, Resolution>,
+  preferences: UserPreferences
+): ToolResult {
+  try {
+    const { action, scope = 'global', resolution_id, frequency, channel = 'all' } = input
+
+    // Handle status request
+    if (action === 'status') {
+      if (resolution_id) {
+        const resolution = resolutions.get(resolution_id)
+        if (!resolution) {
+          return { success: false, message: 'Resolution not found', error: `Resolution ${resolution_id} not found` }
+        }
+        return {
+          success: true,
+          message: `Update settings for "${resolution.title}"`,
+          resolution: {
+            resolution: resolution.title,
+            enabled: resolution.updateSettings.enabled,
+            lastNudge: resolution.updateSettings.lastNudgeAt,
+            nudgeCount: resolution.updateSettings.nudgeCount
+          }
+        }
+      }
+      return {
+        success: true,
+        message: 'Current update settings',
+        preferences,
+        resolution: {
+          globalEnabled: preferences.updatesEnabled,
+          inConversation: preferences.inConversation,
+          sms: { enabled: preferences.sms.enabled, configured: !!preferences.sms.phoneNumber }
+        }
+      }
+    }
+
+    // Handle resolution-specific changes
+    if (scope === 'resolution' && resolution_id) {
+      const resolution = resolutions.get(resolution_id)
+      if (!resolution) {
+        return { success: false, message: 'Resolution not found', error: `Resolution ${resolution_id} not found` }
+      }
+
+      if (action === 'enable') {
+        resolution.updateSettings.enabled = true
+        return { success: true, message: `Updates enabled for "${resolution.title}"`, resolution }
+      }
+      if (action === 'disable') {
+        resolution.updateSettings.enabled = false
+        return { success: true, message: `Updates disabled for "${resolution.title}"`, resolution }
+      }
+    }
+
+    // Handle global changes
+    const changes: string[] = []
+
+    if (action === 'enable') {
+      if (!preferences.updatesEnabled) {
+        preferences.updatesEnabled = true
+        changes.push('updates enabled globally')
+      }
+      if (channel === 'in_conversation' || channel === 'all') {
+        preferences.inConversation.enabled = true
+        changes.push('in-conversation nudges enabled')
+      }
+    }
+
+    if (action === 'disable') {
+      if (channel === 'in_conversation') {
+        preferences.inConversation.enabled = false
+        changes.push('in-conversation nudges disabled')
+      } else if (channel === 'all') {
+        preferences.updatesEnabled = false
+        changes.push('all updates disabled')
+      }
+    }
+
+    if (action === 'configure' && frequency) {
+      preferences.inConversation.frequency = frequency
+      changes.push(`frequency set to ${frequency}`)
+    }
+
+    console.log(`📝 Configured updates: ${changes.join(', ')}`)
+
+    return {
+      success: true,
+      message: changes.length > 0 ? changes.join(', ') : 'No changes made',
+      preferences
+    }
+  } catch (error) {
+    console.error('Error in configureUpdates:', error)
+    return { success: false, message: 'Failed to configure updates', error: (error as Error).message }
+  }
+}
+
+function logUpdate(input: any, resolutions: Map<string, Resolution>): ToolResult {
+  try {
+    const { resolution_id, type, content, sentiment, progress_delta, triggered_by = 'user' } = input
+
+    if (!resolution_id || !type || !content) {
+      return {
+        success: false,
+        message: 'Missing required fields',
+        error: 'resolution_id, type, and content are required'
+      }
+    }
+
+    const resolution = resolutions.get(resolution_id)
+    if (!resolution) {
+      return { success: false, message: 'Resolution not found', error: `Resolution ${resolution_id} not found` }
+    }
+
+    const update: Update = {
+      id: uuidv4(),
+      type,
+      content: content.trim(),
+      sentiment,
+      progressDelta: progress_delta,
+      createdAt: new Date().toISOString(),
+      triggeredBy: triggered_by
+    }
+
+    if (!resolution.updates) resolution.updates = []
+    resolution.updates.push(update)
+    resolution.updatedAt = new Date().toISOString()
+
+    const emoji = type === 'milestone' ? '🎯' : type === 'setback' ? '💪' : type === 'progress' ? '📊' : '📝'
+    console.log(`${emoji} Logged ${type} for "${resolution.title}"`)
+
+    return {
+      success: true,
+      message: `${emoji} ${type.charAt(0).toUpperCase() + type.slice(1)} logged for "${resolution.title}"`,
+      resolution,
+      update
+    }
+  } catch (error) {
+    console.error('Error in logUpdate:', error)
+    return { success: false, message: 'Failed to log update', error: (error as Error).message }
+  }
 }
 
 // ============================================================================
@@ -343,59 +488,34 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        title: {
-          type: 'string',
-          description: 'The resolution title (e.g., "Exercise 3 times per week")'
-        },
-        measurable_criteria: {
-          type: 'string',
-          description: 'How to measure success (e.g., "3 workouts per week for 52 weeks")'
-        },
-        context: {
-          type: 'string',
-          description: 'Brief context about why this matters (optional)'
-        }
+        title: { type: 'string', description: 'The resolution title' },
+        measurable_criteria: { type: 'string', description: 'How to measure success' },
+        context: { type: 'string', description: 'Brief context (optional)' }
       },
       required: ['title', 'measurable_criteria']
     }
   },
   {
     name: 'edit_resolution',
-    description: 'Edit an existing resolution title, measurable criteria, or context',
+    description: 'Edit an existing resolution',
     input_schema: {
       type: 'object' as const,
       properties: {
-        resolution_id: {
-          type: 'string',
-          description: 'The ID of the resolution to edit'
-        },
-        title: {
-          type: 'string',
-          description: 'New title for the resolution (optional)'
-        },
-        measurable_criteria: {
-          type: 'string',
-          description: 'New measurable criteria (optional)'
-        },
-        context: {
-          type: 'string',
-          description: 'New context statement (optional)'
-        }
+        resolution_id: { type: 'string', description: 'The resolution ID' },
+        title: { type: 'string', description: 'New title (optional)' },
+        measurable_criteria: { type: 'string', description: 'New criteria (optional)' },
+        context: { type: 'string', description: 'New context (optional)' }
       },
       required: ['resolution_id']
     }
   },
   {
     name: 'list_resolutions',
-    description: 'Get the current list of active resolutions to check status, limits, and duplicates',
+    description: 'Get resolutions list',
     input_schema: {
       type: 'object' as const,
       properties: {
-        status: {
-          type: 'string',
-          enum: ['active', 'completed', 'all'],
-          description: 'Which resolutions to list'
-        }
+        status: { type: 'string', enum: ['active', 'completed', 'all'], description: 'Filter by status' }
       },
       required: ['status']
     }
@@ -405,12 +525,7 @@ const TOOLS: Anthropic.Tool[] = [
     description: 'Mark a resolution as completed',
     input_schema: {
       type: 'object' as const,
-      properties: {
-        id: {
-          type: 'string',
-          description: 'The resolution ID'
-        }
-      },
+      properties: { id: { type: 'string', description: 'Resolution ID' } },
       required: ['id']
     }
   },
@@ -419,39 +534,52 @@ const TOOLS: Anthropic.Tool[] = [
     description: 'Delete a resolution',
     input_schema: {
       type: 'object' as const,
-      properties: {
-        id: {
-          type: 'string',
-          description: 'The resolution ID to delete'
-        }
-      },
+      properties: { id: { type: 'string', description: 'Resolution ID' } },
       required: ['id']
     }
   },
   {
     name: 'prioritize_resolutions',
-    description: 'Intelligently prioritize resolutions with reasoning about focus, time allocation, and dependencies.',
+    description: 'Intelligently prioritize resolutions',
     input_schema: {
       type: 'object' as const,
       properties: {
-        timePerWeek: {
-          type: 'number',
-          description: 'Hours available per week for resolutions (default: 20)'
-        },
-        focusArea: {
-          type: 'string',
-          description: 'Current life focus area (e.g., "health", "career", "balanced growth")'
-        },
-        constraints: {
-          type: 'string',
-          description: 'Any constraints or challenges affecting prioritization'
-        },
-        askFollowUp: {
-          type: 'boolean',
-          description: 'Whether to ask clarifying questions to refine the strategy'
-        }
+        timePerWeek: { type: 'number', description: 'Hours available per week' },
+        focusArea: { type: 'string', description: 'Current focus area' },
+        constraints: { type: 'string', description: 'Any constraints' },
+        askFollowUp: { type: 'boolean', description: 'Ask clarifying questions' }
       },
       required: []
+    }
+  },
+  {
+    name: 'configure_updates',
+    description: 'Configure update/reminder settings. Use for enabling/disabling reminders.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: { type: 'string', enum: ['enable', 'disable', 'configure', 'status'], description: 'Action to perform' },
+        scope: { type: 'string', enum: ['global', 'resolution'], description: 'Apply globally or to specific resolution' },
+        resolution_id: { type: 'string', description: 'Required if scope is resolution' },
+        frequency: { type: 'string', enum: ['gentle', 'moderate', 'persistent'], description: 'Nudge frequency' },
+        channel: { type: 'string', enum: ['in_conversation', 'sms', 'all'], description: 'Which channel' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'log_update',
+    description: 'Log progress, setback, milestone, or note for a resolution',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: { type: 'string', description: 'Resolution to update' },
+        type: { type: 'string', enum: ['progress', 'setback', 'milestone', 'note'], description: 'Update type' },
+        content: { type: 'string', description: 'Summary of the update' },
+        sentiment: { type: 'string', enum: ['positive', 'neutral', 'struggling'], description: 'User sentiment' },
+        progress_delta: { type: 'number', description: 'Progress change (-100 to 100)' }
+      },
+      required: ['resolution_id', 'type', 'content']
     }
   }
 ]
@@ -482,20 +610,38 @@ Help Turph create, manage, and achieve meaningful resolutions through thoughtful
 5. If user hits the 5-resolution limit, suggest reviewing existing ones
 6. Use list_resolutions to check current status before creating new ones
 
+## Progress Tracking
+When Turph shares progress, struggles, or updates about their resolutions:
+1. Acknowledge what they shared with empathy
+2. Use log_update to record the update (progress, setback, milestone, or note)
+3. Detect sentiment (positive, neutral, struggling) and respond appropriately
+4. For setbacks, be supportive and help identify blockers
+5. For progress, celebrate and reinforce the positive behavior
+
+## Update/Reminder Settings
+Turph can configure reminder preferences via conversation:
+- "Turn on/off reminders" → use configure_updates
+- "Remind me about X more/less often" → configure per-resolution
+- "What are my reminder settings?" → show status
+- Frequency options: gentle (weekly), moderate (every few days), persistent (daily)
+
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
 
 interface ChatResponse {
   text: string
   toolsUsed: string[]
   resolutionUpdate?: any
+  preferencesUpdate?: UserPreferences
 }
 
 async function handleChatMessage(
   messages: Message[],
-  resolutions: Map<string, Resolution>
+  resolutions: Map<string, Resolution>,
+  preferences: UserPreferences
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
+  let preferencesUpdate: UserPreferences | undefined = undefined
   let finalText = ''
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -506,13 +652,22 @@ async function handleChatMessage(
     apiKey: process.env.ANTHROPIC_API_KEY,
   })
 
-  // Convert messages to Claude format
+  const toolImplementations: Record<string, (input: any, resolutions: Map<string, Resolution>) => ToolResult> = {
+    create_resolution: (input, res) => createResolution(input, res),
+    edit_resolution: (input, res) => editResolution(input, res),
+    list_resolutions: (input, res) => listResolutions(input, res),
+    complete_resolution: (input, res) => completeResolution(input, res),
+    delete_resolution: (input, res) => deleteResolution(input, res),
+    prioritize_resolutions: (input, res) => prioritizeResolutions(input, res),
+    configure_updates: (input, res) => configureUpdates(input, res, preferences),
+    log_update: (input, res) => logUpdate(input, res)
+  }
+
   const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
     role: m.role,
     content: m.content
   }))
 
-  // Initial request to Claude with tools
   let response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 1024,
@@ -523,7 +678,6 @@ async function handleChatMessage(
 
   console.log(`[Claude] Initial response stop_reason: ${response.stop_reason}`)
 
-  // Handle tool use in a loop
   while (response.stop_reason === 'tool_use') {
     const toolUseBlock = response.content.find(
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
@@ -537,7 +691,6 @@ async function handleChatMessage(
     console.log(`[Tool] Using: ${toolName}`)
     toolsUsed.push(toolName)
 
-    // Execute the tool
     const toolImpl = toolImplementations[toolName]
     if (!toolImpl) {
       console.error(`Unknown tool: ${toolName}`)
@@ -550,7 +703,10 @@ async function handleChatMessage(
       resolutionUpdate = toolResult.resolution
     }
 
-    // Add assistant message and tool result to messages
+    if (toolResult.preferences) {
+      preferencesUpdate = toolResult.preferences
+    }
+
     claudeMessages.push({
       role: 'assistant',
       content: response.content
@@ -567,7 +723,6 @@ async function handleChatMessage(
       ]
     })
 
-    // Get next response from Claude
     response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
@@ -579,7 +734,6 @@ async function handleChatMessage(
     console.log(`[Claude] Continued response stop_reason: ${response.stop_reason}`)
   }
 
-  // Extract final text response
   const textBlock = response.content.find(
     (block): block is Anthropic.TextBlock => block.type === 'text'
   )
@@ -588,7 +742,8 @@ async function handleChatMessage(
   return {
     text: finalText,
     toolsUsed,
-    resolutionUpdate
+    resolutionUpdate,
+    preferencesUpdate
   }
 }
 
@@ -597,24 +752,20 @@ async function handleChatMessage(
 // ============================================================================
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT')
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version')
 
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     res.status(200).end()
     return
   }
 
-  // Handle POST requests
   if (req.method === 'POST') {
     try {
       const { message, conversationId } = req.body
 
-      // Validate input
       if (!message || typeof message !== 'string') {
         return res.status(400).json({
           error: 'Missing or invalid message',
@@ -622,15 +773,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
       }
 
-      // Generate or use conversation ID
       const convId = conversationId || `conv-${uuidv4()}`
 
-      // Load state from database (no fallback)
       let resolutions: Map<string, Resolution>
+      let preferences: UserPreferences
       let messages: Message[]
       
       try {
         resolutions = await loadResolutions()
+        preferences = await loadPreferences()
         messages = await loadConversation(convId)
       } catch (error) {
         if (error instanceof DatabaseError) {
@@ -644,7 +795,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw error
       }
 
-      // Add user message
       messages.push({
         role: 'user',
         content: message
@@ -652,29 +802,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-      // Get Claude's response with tools
-      const response = await handleChatMessage(messages, resolutions)
+      const response = await handleChatMessage(messages, resolutions, preferences)
 
-      // Add assistant response
       messages.push({
         role: 'assistant',
         content: response.text
       })
 
-      // Save state to database
       try {
         await saveResolutions(resolutions)
         await saveConversation(convId, messages)
+        if (response.preferencesUpdate) {
+          await savePreferences(response.preferencesUpdate)
+        }
       } catch (error) {
         if (error instanceof DatabaseError) {
           console.error('[Chat] Failed to save state:', error.details)
-          // Still return the response, but log the save failure
         } else {
           throw error
         }
       }
 
-      // Get current list of active resolutions
       const allResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
 
       console.log(`[Chat] Response sent. Tools used: ${response.toolsUsed.join(', ') || 'none'}`)
@@ -698,7 +846,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Handle other methods
   return res.status(405).json({
     error: 'Method not allowed',
     allowed: ['POST', 'OPTIONS']
