@@ -15,10 +15,13 @@ import {
   loadPreferences,
   savePreferences,
   saveNudge,
+  loadNudgesForResolution,
   DatabaseError,
   type Resolution,
-  type UserPreferences
+  type UserPreferences,
+  type NudgeRecord
 } from '../lib/db.js'
+import { generateUserInsights } from '../services/analytics.js'
 
 const router = express.Router()
 
@@ -71,6 +74,13 @@ router.post('/', async (req: Request, res: Response) => {
     // Get session nudge count for this conversation
     const sessionNudgeCount = sessionNudgeCounts.get(convId) || 0
 
+    // Load nudge records for analytics
+    const allNudgeRecords: NudgeRecord[] = []
+    for (const resolution of resolutions.values()) {
+      const nudges = await loadNudgesForResolution(resolution.id)
+      allNudgeRecords.push(...nudges)
+    }
+
     // Add user message
     conversation.messages.push({
       role: 'user',
@@ -79,12 +89,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-    // Get Claude's response with tool use and nudge logic
+    // Get Claude's response with tool use, nudge logic, and analytics
     const response = await handleChatMessage(
       conversation.messages,
       resolutions,
       preferences,
-      sessionNudgeCount
+      sessionNudgeCount,
+      allNudgeRecords
     )
 
     // Add assistant response to conversation
@@ -211,6 +222,45 @@ router.post('/session/reset', async (req: Request, res: Response) => {
   } else {
     sessionNudgeCounts.clear()
     res.json({ success: true, message: 'All sessions reset' })
+  }
+})
+
+// Get analytics insights (for debugging and future dashboard)
+router.get('/analytics/insights', async (req: Request, res: Response) => {
+  try {
+    const resolutions = await loadResolutions()
+    
+    // Load all nudge records
+    const allNudgeRecords: NudgeRecord[] = []
+    for (const resolution of resolutions.values()) {
+      const nudges = await loadNudgesForResolution(resolution.id)
+      allNudgeRecords.push(...nudges)
+    }
+    
+    const insights = generateUserInsights(resolutions, allNudgeRecords)
+    
+    res.json({
+      insights,
+      summary: {
+        totalDataPoints: insights.dataPoints,
+        insightsGenerated: insights.promptInsights.length,
+        promptInsights: insights.promptInsights
+      }
+    })
+  } catch (error) {
+    if (error instanceof DatabaseError) {
+      res.status(503).json({
+        error: 'Database unavailable',
+        details: error.details,
+        code: error.code
+      })
+      return
+    }
+    console.error('Error generating analytics:', error)
+    res.status(500).json({ 
+      error: 'Failed to generate analytics', 
+      details: (error as Error).message 
+    })
   }
 })
 

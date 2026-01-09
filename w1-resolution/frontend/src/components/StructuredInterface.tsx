@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, PieChart, PartyPopper, Settings2, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PieChart, PartyPopper, Settings2, Check, Brain } from 'lucide-react'
 import ResolutionRadar from './ResolutionRadar'
 import ResolutionDetailView from './ResolutionDetailView'
+import InsightsView from './InsightsView'
 import {
   resolutionToRadarData,
   categorizeTier,
@@ -9,7 +10,7 @@ import {
 } from '../utils/resolutionViz'
 import { calculateCadenceProgress } from '../types/resolution'
 
-type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'settings'
+type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'insights' | 'settings'
 type NavState = 'collapsed' | 'transition' | 'open'
 
 const TRANSITION_DURATION = 600 // ms
@@ -146,6 +147,21 @@ export default function StructuredInterface({
             title="Resolutions"
           >
             <PartyPopper className="w-5 h-5" />
+          </button>
+
+          {/* Insights */}
+          <button
+            onClick={() => handleNavClick('insights')}
+            disabled={!isClickable}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ease-in-out ${
+              navState === 'open' && currentView === 'insights'
+                ? 'bg-primary text-primary-foreground shadow-lg'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            } ${!isClickable ? 'cursor-not-allowed opacity-70' : ''}`}
+            style={{ transitionDuration: `${TRANSITION_DURATION}ms` }}
+            title="Insights"
+          >
+            <Brain className="w-5 h-5" />
           </button>
 
           {/* Settings */}
@@ -365,6 +381,9 @@ export default function StructuredInterface({
                 }}
               />
             )}
+
+            {/* Insights View */}
+            {currentView === 'insights' && <InsightsView />}
 
             {/* Settings View */}
             {currentView === 'settings' && (

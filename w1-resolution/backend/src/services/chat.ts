@@ -20,6 +20,11 @@ import {
   updateResolutionNudgeStats,
   type NudgeContext
 } from './nudge.js'
+import {
+  generateUserInsights,
+  buildInsightsPromptSection,
+  type UserInsights
+} from './analytics.js'
 
 let client: Anthropic | null = null
 
@@ -380,14 +385,31 @@ When you receive [NUDGE CONTEXT], naturally weave in a question about the mentio
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
 
 /**
- * Build system prompt with optional nudge context
+ * Build system prompt with optional nudge context and personalized insights
  */
-function buildSystemPrompt(nudgeContext: NudgeContext): string {
-  if (!nudgeContext.hasNudge || !nudgeContext.prompt) {
-    return BASE_SYSTEM_PROMPT
+function buildSystemPrompt(
+  nudgeContext: NudgeContext,
+  insights: UserInsights | null
+): string {
+  const sections: string[] = []
+  
+  // Add nudge context if present
+  if (nudgeContext.hasNudge && nudgeContext.prompt) {
+    sections.push(nudgeContext.prompt)
   }
-
-  return `${nudgeContext.prompt}\n\n${BASE_SYSTEM_PROMPT}`
+  
+  // Add personalized insights if we have enough data
+  if (insights) {
+    const insightsSection = buildInsightsPromptSection(insights)
+    if (insightsSection) {
+      sections.push(insightsSection)
+    }
+  }
+  
+  // Add base prompt
+  sections.push(BASE_SYSTEM_PROMPT)
+  
+  return sections.join('\n\n')
 }
 
 // Tool implementations - some need preferences
@@ -418,7 +440,8 @@ export async function handleChatMessage(
   messages: Message[],
   resolutions: Map<string, Resolution>,
   preferences: UserPreferences,
-  sessionNudgeCount: number = 0
+  sessionNudgeCount: number = 0,
+  nudgeRecords: NudgeRecord[] = []
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
@@ -441,8 +464,21 @@ export async function handleChatMessage(
       console.log(`[Nudge] No nudge: ${nudgeDecision.reason}`)
     }
 
-    // Build system prompt with nudge context if applicable
-    const systemPrompt = buildSystemPrompt(nudgeContext)
+    // Generate personalized insights from historical data
+    const insights = generateUserInsights(resolutions, nudgeRecords)
+    
+    // Log insights if we have meaningful data
+    if (insights.promptInsights.length > 0) {
+      console.log(`[Analytics] Generated ${insights.promptInsights.length} insights from ${insights.dataPoints} data points:`)
+      for (const insight of insights.promptInsights) {
+        console.log(`  - ${insight}`)
+      }
+    } else {
+      console.log(`[Analytics] Not enough data for insights yet (${insights.dataPoints} data points)`)
+    }
+
+    // Build system prompt with nudge context and insights
+    const systemPrompt = buildSystemPrompt(nudgeContext, insights)
 
     // Convert messages to Claude format
     const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
