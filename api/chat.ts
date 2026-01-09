@@ -15,13 +15,32 @@ import {
   saveConversation,
   loadPreferences,
   savePreferences,
+  saveNudge,
   DatabaseError,
   DEFAULT_UPDATE_SETTINGS,
   type Resolution,
   type Message,
   type UserPreferences,
-  type Update
+  type Update,
+  type NudgeRecord
 } from './lib/db'
+import {
+  shouldNudge,
+  generateNudgeContext,
+  createNudgeRecord,
+  updateResolutionNudgeStats,
+  type NudgeContext
+} from './lib/nudge'
+
+// ============================================================================
+// Session Tracking (Vercel Edge: use KV for persistent tracking if needed)
+// For now, simple in-memory per request - resets each cold start
+// ============================================================================
+
+// In Vercel serverless, each invocation is isolated. Session tracking would
+// need to be stored in Redis/KV for true persistence. For now, we allow
+// one nudge per request (since cold starts are common).
+const SESSION_NUDGE_LIMIT = 1
 
 // ============================================================================
 // Tool Result Interface
@@ -584,7 +603,7 @@ const TOOLS: Anthropic.Tool[] = [
   }
 ]
 
-const SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
+const BASE_SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
 
 ## Your Role
 Help Turph create, manage, and achieve meaningful resolutions through thoughtful conversation.
@@ -625,23 +644,44 @@ Turph can configure reminder preferences via conversation:
 - "What are my reminder settings?" → show status
 - Frequency options: gentle (weekly), moderate (every few days), persistent (daily)
 
+## Proactive Check-Ins
+When you receive [NUDGE CONTEXT], naturally weave in a question about the mentioned resolution:
+- Don't be pushy or formulaic
+- Make it feel like a natural part of the conversation
+- If the user responds with progress, use log_update to record it
+- Adjust your tone based on their response
+
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
+
+/**
+ * Build system prompt with optional nudge context
+ */
+function buildSystemPrompt(nudgeContext: NudgeContext): string {
+  if (!nudgeContext.hasNudge || !nudgeContext.prompt) {
+    return BASE_SYSTEM_PROMPT
+  }
+
+  return `${nudgeContext.prompt}\n\n${BASE_SYSTEM_PROMPT}`
+}
 
 interface ChatResponse {
   text: string
   toolsUsed: string[]
   resolutionUpdate?: any
   preferencesUpdate?: UserPreferences
+  nudgeDelivered?: NudgeRecord
 }
 
 async function handleChatMessage(
   messages: Message[],
   resolutions: Map<string, Resolution>,
-  preferences: UserPreferences
+  preferences: UserPreferences,
+  nudgeContext: NudgeContext
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
   let preferencesUpdate: UserPreferences | undefined = undefined
+  let nudgeDelivered: NudgeRecord | undefined = undefined
   let finalText = ''
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -663,6 +703,9 @@ async function handleChatMessage(
     log_update: (input, res) => logUpdate(input, res)
   }
 
+  // Build system prompt with nudge context
+  const systemPrompt = buildSystemPrompt(nudgeContext)
+
   const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
     role: m.role,
     content: m.content
@@ -671,7 +714,7 @@ async function handleChatMessage(
   let response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     tools: TOOLS,
     messages: claudeMessages
   })
@@ -726,7 +769,7 @@ async function handleChatMessage(
     response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: TOOLS,
       messages: claudeMessages
     })
@@ -739,11 +782,27 @@ async function handleChatMessage(
   )
   finalText = textBlock?.text || "I'm ready to help with your resolutions!"
 
+  // Track nudge delivery if applicable
+  if (nudgeContext.hasNudge && nudgeContext.resolutionId) {
+    const nudgeRecord = createNudgeRecord(nudgeContext)
+    if (nudgeRecord) {
+      nudgeDelivered = nudgeRecord
+      
+      // Update resolution stats
+      const resolution = resolutions.get(nudgeContext.resolutionId)
+      if (resolution) {
+        updateResolutionNudgeStats(resolution)
+        console.log(`[Nudge] Delivered and tracked for "${nudgeContext.resolutionTitle}"`)
+      }
+    }
+  }
+
   return {
     text: finalText,
     toolsUsed,
     resolutionUpdate,
-    preferencesUpdate
+    preferencesUpdate,
+    nudgeDelivered
   }
 }
 
@@ -795,6 +854,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw error
       }
 
+      // Check for nudge (session count = 0 for serverless since each request is isolated)
+      const resolutionsList = Array.from(resolutions.values())
+      const nudgeDecision = shouldNudge(preferences, resolutionsList, 0)
+      const nudgeContext = generateNudgeContext(nudgeDecision)
+
+      if (nudgeDecision.shouldNudge) {
+        console.log(`[Nudge] Will nudge about "${nudgeDecision.resolutionTitle}" (${nudgeDecision.type}): ${nudgeDecision.reason}`)
+      } else {
+        console.log(`[Nudge] No nudge: ${nudgeDecision.reason}`)
+      }
+
       messages.push({
         role: 'user',
         content: message
@@ -802,7 +872,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-      const response = await handleChatMessage(messages, resolutions, preferences)
+      const response = await handleChatMessage(messages, resolutions, preferences, nudgeContext)
 
       messages.push({
         role: 'assistant',
@@ -814,6 +884,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await saveConversation(convId, messages)
         if (response.preferencesUpdate) {
           await savePreferences(response.preferencesUpdate)
+        }
+        if (response.nudgeDelivered) {
+          await saveNudge(response.nudgeDelivered)
         }
       } catch (error) {
         if (error instanceof DatabaseError) {
@@ -833,7 +906,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         conversationId: convId,
         toolsUsed: response.toolsUsed,
         resolutionUpdate: response.resolutionUpdate,
-        resolutions: allResolutions
+        resolutions: allResolutions,
+        nudgeDelivered: response.nudgeDelivered ? {
+          id: response.nudgeDelivered.id,
+          resolutionId: response.nudgeDelivered.resolutionId,
+          type: response.nudgeDelivered.type
+        } : undefined
       })
     } catch (error) {
       console.error('[Chat] Error:', error)

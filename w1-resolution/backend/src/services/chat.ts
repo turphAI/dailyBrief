@@ -9,7 +9,14 @@ import {
   configureUpdates,
   logUpdate
 } from '../tools/index'
-import type { Resolution, UserPreferences } from '../lib/db.js'
+import type { Resolution, UserPreferences, NudgeRecord } from '../lib/db.js'
+import {
+  shouldNudge,
+  generateNudgeContext,
+  createNudgeRecord,
+  updateResolutionNudgeStats,
+  type NudgeContext
+} from './nudge.js'
 
 let client: Anthropic | null = null
 
@@ -35,6 +42,7 @@ interface ChatResponse {
   toolsUsed: string[]
   resolutionUpdate?: any
   preferencesUpdate?: UserPreferences
+  nudgeDelivered?: NudgeRecord
 }
 
 // Tool definitions for Claude
@@ -224,7 +232,7 @@ const TOOLS = [
   }
 ]
 
-const SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
+const BASE_SYSTEM_PROMPT = `You are Turph's supportive but challenging Resolution Coach.
 
 ## Your Role
 Help Turph create, manage, and achieve meaningful resolutions through thoughtful conversation.
@@ -265,7 +273,25 @@ Turph can configure reminder preferences via conversation:
 - "What are my reminder settings?" → show status
 - Frequency options: gentle (weekly), moderate (every few days), persistent (daily)
 
+## Proactive Check-Ins
+When you receive [NUDGE CONTEXT], naturally weave in a question about the mentioned resolution:
+- Don't be pushy or formulaic
+- Make it feel like a natural part of the conversation
+- If the user responds with progress, use log_update to record it
+- Adjust your tone based on their response
+
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
+
+/**
+ * Build system prompt with optional nudge context
+ */
+function buildSystemPrompt(nudgeContext: NudgeContext): string {
+  if (!nudgeContext.hasNudge || !nudgeContext.prompt) {
+    return BASE_SYSTEM_PROMPT
+  }
+
+  return `${nudgeContext.prompt}\n\n${BASE_SYSTEM_PROMPT}`
+}
 
 // Tool implementations - some need preferences
 const getToolImplementations = (preferences: UserPreferences) => ({
@@ -290,16 +316,33 @@ const getToolImplementations = (preferences: UserPreferences) => ({
 export async function handleChatMessage(
   messages: Message[],
   resolutions: Map<string, Resolution>,
-  preferences: UserPreferences
+  preferences: UserPreferences,
+  sessionNudgeCount: number = 0
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
   let preferencesUpdate: UserPreferences | undefined = undefined
+  let nudgeDelivered: NudgeRecord | undefined = undefined
   let finalText = ''
 
   const toolImplementations = getToolImplementations(preferences)
 
   try {
+    // Check if we should nudge the user
+    const resolutionsList = Array.from(resolutions.values())
+    const nudgeDecision = shouldNudge(preferences, resolutionsList, sessionNudgeCount)
+    const nudgeContext = generateNudgeContext(nudgeDecision)
+
+    // Log nudge decision
+    if (nudgeDecision.shouldNudge) {
+      console.log(`[Nudge] Will nudge about "${nudgeDecision.resolutionTitle}" (${nudgeDecision.type}): ${nudgeDecision.reason}`)
+    } else {
+      console.log(`[Nudge] No nudge: ${nudgeDecision.reason}`)
+    }
+
+    // Build system prompt with nudge context if applicable
+    const systemPrompt = buildSystemPrompt(nudgeContext)
+
     // Convert messages to Claude format
     const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
       role: m.role,
@@ -311,7 +354,7 @@ export async function handleChatMessage(
     let response = await anthropicClient.messages.create({
       model: 'claude-opus-4-1-20250805',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: TOOLS as Anthropic.Tool[],
       messages: claudeMessages
     })
@@ -370,7 +413,7 @@ export async function handleChatMessage(
       response = await anthropicClient.messages.create({
         model: 'claude-opus-4-1-20250805',
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: TOOLS as Anthropic.Tool[],
         messages: claudeMessages
       })
@@ -384,11 +427,27 @@ export async function handleChatMessage(
     )
     finalText = textBlock?.text || "I'm ready to help with your resolutions!"
 
+    // If we had a nudge context and got a response, track the nudge delivery
+    if (nudgeContext.hasNudge && nudgeContext.resolutionId) {
+      const nudgeRecord = createNudgeRecord(nudgeContext)
+      if (nudgeRecord) {
+        nudgeDelivered = nudgeRecord
+        
+        // Update resolution stats
+        const resolution = resolutions.get(nudgeContext.resolutionId)
+        if (resolution) {
+          updateResolutionNudgeStats(resolution)
+          console.log(`[Nudge] Delivered and tracked for "${nudgeContext.resolutionTitle}"`)
+        }
+      }
+    }
+
     return {
       text: finalText,
       toolsUsed,
       resolutionUpdate,
-      preferencesUpdate
+      preferencesUpdate,
+      nudgeDelivered
     }
   } catch (error) {
     console.error('Claude API error:', error)

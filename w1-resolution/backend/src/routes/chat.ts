@@ -14,12 +14,17 @@ import {
   saveConversation,
   loadPreferences,
   savePreferences,
+  saveNudge,
   DatabaseError,
   type Resolution,
   type UserPreferences
 } from '../lib/db.js'
 
 const router = express.Router()
+
+// Session nudge tracking (in-memory per conversation for simplicity)
+// Reset when conversation changes or server restarts
+const sessionNudgeCounts = new Map<string, number>()
 
 // Chat endpoint - handles conversational messages with tool calling
 router.post('/', async (req: Request, res: Response) => {
@@ -63,6 +68,9 @@ router.post('/', async (req: Request, res: Response) => {
       throw error
     }
 
+    // Get session nudge count for this conversation
+    const sessionNudgeCount = sessionNudgeCounts.get(convId) || 0
+
     // Add user message
     conversation.messages.push({
       role: 'user',
@@ -71,11 +79,12 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
-    // Get Claude's response with tool use
+    // Get Claude's response with tool use and nudge logic
     const response = await handleChatMessage(
       conversation.messages,
       resolutions,
-      preferences
+      preferences,
+      sessionNudgeCount
     )
 
     // Add assistant response to conversation
@@ -92,6 +101,14 @@ router.post('/', async (req: Request, res: Response) => {
       // Save preferences if they were updated
       if (response.preferencesUpdate) {
         await savePreferences(response.preferencesUpdate)
+      }
+
+      // Save nudge record if one was delivered
+      if (response.nudgeDelivered) {
+        await saveNudge(response.nudgeDelivered)
+        // Increment session nudge count
+        sessionNudgeCounts.set(convId, sessionNudgeCount + 1)
+        console.log(`[Chat] Session nudge count for ${convId}: ${sessionNudgeCount + 1}`)
       }
     } catch (error) {
       if (error instanceof DatabaseError) {
@@ -110,7 +127,12 @@ router.post('/', async (req: Request, res: Response) => {
       conversationId: convId,
       toolsUsed: response.toolsUsed,
       resolutionUpdate: response.resolutionUpdate,
-      resolutions: allResolutions
+      resolutions: allResolutions,
+      nudgeDelivered: response.nudgeDelivered ? {
+        id: response.nudgeDelivered.id,
+        resolutionId: response.nudgeDelivered.resolutionId,
+        type: response.nudgeDelivered.type
+      } : undefined
     })
   } catch (error) {
     console.error('Chat error:', error)
@@ -177,6 +199,18 @@ router.get('/resolutions/list/all', async (req: Request, res: Response) => {
       resolutions: [],
       count: 0
     })
+  }
+})
+
+// Reset session nudge count (useful for testing or new sessions)
+router.post('/session/reset', async (req: Request, res: Response) => {
+  const { conversationId } = req.body
+  if (conversationId) {
+    sessionNudgeCounts.delete(conversationId)
+    res.json({ success: true, message: `Session reset for ${conversationId}` })
+  } else {
+    sessionNudgeCounts.clear()
+    res.json({ success: true, message: 'All sessions reset' })
   }
 })
 
