@@ -1,6 +1,12 @@
 {
   "buildCommand": "bash build.sh",
   "installCommand": "npm install",
+  "crons": [
+    {
+      "path": "/api/cron/nudge",
+      "schedule": "0 */3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
