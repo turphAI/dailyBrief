@@ -1,4 +1,4 @@
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 /**
  * Edit an existing resolution's title, measurable criteria, and context
@@ -6,7 +6,7 @@ import { ToolResult } from './types'
  * @param resolutions - Map of all resolutions
  * @returns ToolResult with updated resolution
  */
-export function editResolution(input: any, resolutions: Map<string, any>): ToolResult {
+export function editResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const { resolution_id, title, measurable_criteria, context } = input
 

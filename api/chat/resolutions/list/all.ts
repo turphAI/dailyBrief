@@ -1,40 +1,13 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { createClient } from 'redis'
-
-// Redis client management
-let redisClient: ReturnType<typeof createClient> | null = null
-let isRedisConnected = false
-
-async function getRedisClient() {
-  if (isRedisConnected && redisClient) {
-    return redisClient
-  }
-
-  const redisUrl = process.env.KV_URL || process.env.REDIS_URL
-  if (redisUrl) {
-    try {
-      redisClient = createClient({ url: redisUrl })
-      redisClient.on('error', (err) => {
-        console.error('Redis client error:', err)
-        isRedisConnected = false
-      })
-      await redisClient.connect()
-      isRedisConnected = true
-      console.log('✅ Redis connected')
-      return redisClient
-    } catch (e: any) {
-      console.error('❌ Redis connection failed:', e.message)
-      isRedisConnected = false
-      return null
-    }
-  }
-  return null
-}
-
 /**
- * List Resolutions Handler - GET /api/chat/resolutions/list/all
- * Returns all active resolutions for UI initialization
+ * List Resolutions Endpoint
+ * 
+ * Returns all active resolutions for UI initialization.
+ * GET /api/chat/resolutions/list/all
  */
+
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { loadResolutions, DatabaseError } from '../../../lib/db'
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true')
@@ -51,38 +24,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle GET requests
   if (req.method === 'GET') {
     try {
-      const resolutions: any[] = []
+      const allResolutions = await loadResolutions()
+      const activeResolutions = Array.from(allResolutions.values()).filter(
+        r => r.status === 'active'
+      )
 
-      // Try to load from Redis
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        const ids = await client.sMembers('resolutions:all')
-        if (ids && ids.length > 0) {
-          for (const id of ids) {
-            const data = await client.get(`resolution:${id}`)
-            if (data) {
-              const resolution = JSON.parse(data)
-              if (resolution.status === 'active') {
-                resolutions.push(resolution)
-              }
-            }
-          }
-        }
-        console.log(`[Resolutions] Loaded ${resolutions.length} active resolutions from Redis`)
-      } else {
-        console.log('[Resolutions] No Redis connection, returning empty list')
-      }
+      console.log(`[Resolutions] Loaded ${activeResolutions.length} active resolutions`)
 
       return res.status(200).json({
-        resolutions,
-        count: resolutions.length
+        resolutions: activeResolutions,
+        count: activeResolutions.length
       })
     } catch (error) {
       console.error('[Resolutions] Error:', error)
+      
+      if (error instanceof DatabaseError) {
+        return res.status(503).json({
+          error: 'Database unavailable',
+          details: error.details,
+          code: error.code,
+          resolutions: [],
+          count: 0
+        })
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       return res.status(500).json({
         error: 'Failed to fetch resolutions',
-        details: errorMessage
+        details: errorMessage,
+        resolutions: [],
+        count: 0
       })
     }
   }

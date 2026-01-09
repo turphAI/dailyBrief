@@ -1,4 +1,4 @@
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 /**
  * Delete a resolution permanently
@@ -6,7 +6,7 @@ import { ToolResult } from './types'
  * @param resolutions - Map of all resolutions
  * @returns ToolResult with deletion confirmation
  */
-export function deleteResolution(input: any, resolutions: Map<string, any>): ToolResult {
+export function deleteResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     if (!input.id) {
       return {

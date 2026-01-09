@@ -1,84 +1,61 @@
+/**
+ * Chat Routes - Local Development
+ * 
+ * Handles conversational messages with Claude tool calling.
+ */
+
 import express, { Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { handleChatMessage } from '../services/chat.js'
-import { createClient } from 'redis'
-import 'dotenv/config'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import dotenv from 'dotenv'
-
-// Load .env.local from project root
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const envPath = path.resolve(__dirname, '../../../../.env.local')
-
-dotenv.config({ path: envPath })
+import {
+  loadResolutions,
+  saveResolutions,
+  loadConversation,
+  saveConversation,
+  DatabaseError,
+  type Resolution
+} from '../lib/db.js'
 
 const router = express.Router()
 
-let redisClient: any = null
-let isRedisConnected = false
-
-async function getRedisClient() {
-  if (isRedisConnected && redisClient) {
-    return redisClient
-  }
-
-  const redisUrl = process.env.KV_URL || process.env.REDIS_URL
-  if (redisUrl) {
-    try {
-      redisClient = createClient({ url: redisUrl })
-      await redisClient.connect()
-      isRedisConnected = true
-      console.log('✅ Redis connected')
-      return redisClient
-    } catch (e: any) {
-      console.error('❌ Redis connection failed:', e.message)
-      isRedisConnected = false
-      return null
-    }
-  }
-  return null
-}
-
-// In-memory storage fallback
-const inMemoryResolutions = new Map<string, any>()
-const inMemoryConversations = new Map<string, any>()
-
 // Chat endpoint - handles conversational messages with tool calling
 router.post('/', async (req: Request, res: Response) => {
-  const useRedis = !!(process.env.KV_URL || process.env.REDIS_URL)
-  
   try {
     const { message, conversationId } = req.body
 
     if (!message || typeof message !== 'string') {
-      res.status(400).json({ error: 'Message is required' })
+      res.status(400).json({ 
+        error: 'Message is required',
+        details: 'A message string is required'
+      })
       return
     }
 
     const convId = conversationId || uuidv4()
     
-    // Get or create conversation
-    let conversation: any = null
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        const data = await client.get(`conversation:${convId}`)
-        conversation = data ? JSON.parse(data) : null
-      }
-    }
+    // Load state from database (no fallback)
+    let resolutions: Map<string, Resolution>
+    let conversation: any
     
-    if (!conversation) {
-      conversation = inMemoryConversations.get(convId)
-    }
-
-    if (!conversation) {
+    try {
+      resolutions = await loadResolutions()
+      const messages = await loadConversation(convId)
       conversation = {
         id: convId,
-        messages: [],
+        messages,
         createdAt: new Date()
       }
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        console.error('[Chat] Database error:', error.details)
+        res.status(503).json({
+          error: 'Database unavailable',
+          details: error.details,
+          code: error.code
+        })
+        return
+      }
+      throw error
     }
 
     // Add user message
@@ -87,29 +64,7 @@ router.post('/', async (req: Request, res: Response) => {
       content: message
     })
 
-    console.log(`[Chat] Processing message: "${message.substring(0, 50)}..." (using ${useRedis && isRedisConnected ? 'Redis' : 'in-memory'})`)
-
-    // Get resolutions from Redis or memory
-    let resolutions = new Map<string, any>()
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        const ids = await client.sMembers('resolutions:all')
-        if (ids && ids.length > 0) {
-          for (const id of ids) {
-            const data = await client.get(`resolution:${id}`)
-            if (data) {
-              const resolution = JSON.parse(data)
-              resolutions.set(resolution.id, resolution)
-            }
-          }
-        }
-      } else {
-        resolutions = inMemoryResolutions
-      }
-    } else {
-      resolutions = inMemoryResolutions
-    }
+    console.log(`[Chat] Processing message: "${message.substring(0, 50)}..."`)
 
     // Get Claude's response with tool use
     const response = await handleChatMessage(
@@ -123,26 +78,16 @@ router.post('/', async (req: Request, res: Response) => {
       content: response.text
     })
 
-    // Save conversation
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        await client.setEx(`conversation:${convId}`, 86400, JSON.stringify(conversation))
+    // Save state to database
+    try {
+      await saveResolutions(resolutions)
+      await saveConversation(convId, conversation.messages)
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        console.error('[Chat] Failed to save state:', error.details)
+        // Still return the response, but log the save failure
       } else {
-        inMemoryConversations.set(convId, conversation)
-      }
-    } else {
-      inMemoryConversations.set(convId, conversation)
-    }
-
-    // Save resolutions back to Redis if using Redis
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        for (const [id, resolution] of resolutions.entries()) {
-          await client.set(`resolution:${id}`, JSON.stringify(resolution))
-          await client.sAdd('resolutions:all', id)
-        }
+        throw error
       }
     }
 
@@ -154,7 +99,7 @@ router.post('/', async (req: Request, res: Response) => {
       conversationId: convId,
       toolsUsed: response.toolsUsed,
       resolutionUpdate: response.resolutionUpdate,
-      resolutions: allResolutions // Include all resolutions for UI sync
+      resolutions: allResolutions
     })
   } catch (error) {
     console.error('Chat error:', error)
@@ -167,30 +112,27 @@ router.post('/', async (req: Request, res: Response) => {
 
 // Get conversation history
 router.get('/:conversationId', async (req: Request, res: Response) => {
-  const useRedis = !!(process.env.KV_URL || process.env.REDIS_URL)
-  
   try {
-    let conversation: any = null
+    const messages = await loadConversation(req.params.conversationId)
     
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        const data = await client.get(`conversation:${req.params.conversationId}`)
-        conversation = data ? JSON.parse(data) : null
-      }
-    }
-    
-    if (!conversation) {
-      conversation = inMemoryConversations.get(req.params.conversationId)
-    }
-    
-    if (!conversation) {
+    if (messages.length === 0) {
       res.status(404).json({ error: 'Conversation not found' })
       return
     }
     
-    res.json(conversation)
+    res.json({
+      id: req.params.conversationId,
+      messages
+    })
   } catch (error) {
+    if (error instanceof DatabaseError) {
+      res.status(503).json({
+        error: 'Database unavailable',
+        details: error.details,
+        code: error.code
+      })
+      return
+    }
     console.error('Error fetching conversation:', error)
     res.status(500).json({ error: 'Failed to fetch conversation', details: (error as Error).message })
   }
@@ -198,36 +140,33 @@ router.get('/:conversationId', async (req: Request, res: Response) => {
 
 // Get all resolutions (for UI initialization)
 router.get('/resolutions/list/all', async (req: Request, res: Response) => {
-  const useRedis = !!(process.env.KV_URL || process.env.REDIS_URL)
-  
   try {
-    let allResolutions: any[] = []
+    const allResolutions = await loadResolutions()
+    const activeResolutions = Array.from(allResolutions.values()).filter(r => r.status === 'active')
     
-    if (useRedis) {
-      const client = await getRedisClient()
-      if (client && isRedisConnected) {
-        const ids = await client.sMembers('resolutions:all')
-        if (ids && ids.length > 0) {
-          for (const id of ids) {
-            const data = await client.get(`resolution:${id}`)
-            if (data) {
-              allResolutions.push(JSON.parse(data))
-            }
-          }
-        }
-      } else {
-        allResolutions = Array.from(inMemoryResolutions.values())
-      }
-    } else {
-      allResolutions = Array.from(inMemoryResolutions.values())
-    }
-    
-    res.json({ resolutions: allResolutions })
+    res.json({ 
+      resolutions: activeResolutions,
+      count: activeResolutions.length
+    })
   } catch (error) {
+    if (error instanceof DatabaseError) {
+      res.status(503).json({
+        error: 'Database unavailable',
+        details: error.details,
+        code: error.code,
+        resolutions: [],
+        count: 0
+      })
+      return
+    }
     console.error('Error fetching resolutions:', error)
-    res.status(500).json({ error: 'Failed to fetch resolutions', details: (error as Error).message })
+    res.status(500).json({ 
+      error: 'Failed to fetch resolutions', 
+      details: (error as Error).message,
+      resolutions: [],
+      count: 0
+    })
   }
 })
 
 export default router
-

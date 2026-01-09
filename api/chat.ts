@@ -1,124 +1,22 @@
+/**
+ * Chat API Endpoint
+ * 
+ * Handles conversational messages with Claude tool calling.
+ * POST /api/chat
+ */
+
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
-import { createClient } from 'redis'
-
-// ============================================================================
-// Redis State Management
-// ============================================================================
-
-let redisClient: ReturnType<typeof createClient> | null = null
-let isRedisConnected = false
-
-async function getRedisClient() {
-  if (isRedisConnected && redisClient) {
-    return redisClient
-  }
-
-  const redisUrl = process.env.KV_URL || process.env.REDIS_URL
-  if (redisUrl) {
-    try {
-      redisClient = createClient({ url: redisUrl })
-      redisClient.on('error', (err) => {
-        console.error('Redis client error:', err)
-        isRedisConnected = false
-      })
-      await redisClient.connect()
-      isRedisConnected = true
-      console.log('✅ Redis connected')
-      return redisClient
-    } catch (e: any) {
-      console.error('❌ Redis connection failed:', e.message)
-      isRedisConnected = false
-      return null
-    }
-  }
-  return null
-}
-
-// In-memory fallback (resets on cold start - use Redis for persistence)
-const inMemoryResolutions = new Map<string, any>()
-const inMemoryConversations = new Map<string, any[]>()
-
-async function loadResolutions(): Promise<Map<string, any>> {
-  const resolutions = new Map<string, any>()
-  
-  try {
-    const client = await getRedisClient()
-    if (client && isRedisConnected) {
-      const ids = await client.sMembers('resolutions:all')
-      if (ids && ids.length > 0) {
-        for (const id of ids) {
-          const data = await client.get(`resolution:${id}`)
-          if (data) {
-            resolutions.set(id, JSON.parse(data))
-          }
-        }
-      }
-      console.log(`[Redis] Loaded ${resolutions.size} resolutions`)
-      return resolutions
-    }
-  } catch (e) {
-    console.error('Error loading from Redis:', e)
-  }
-  
-  // Fallback to in-memory
-  console.log(`[Memory] Using ${inMemoryResolutions.size} cached resolutions`)
-  return new Map(inMemoryResolutions)
-}
-
-async function saveResolutions(resolutions: Map<string, any>): Promise<void> {
-  // Update in-memory cache
-  inMemoryResolutions.clear()
-  for (const [id, resolution] of resolutions.entries()) {
-    inMemoryResolutions.set(id, resolution)
-  }
-  
-  // Try to save to Redis
-  try {
-    const client = await getRedisClient()
-    if (client && isRedisConnected) {
-      for (const [id, resolution] of resolutions.entries()) {
-        await client.set(`resolution:${id}`, JSON.stringify(resolution))
-        await client.sAdd('resolutions:all', id)
-      }
-      console.log(`[Redis] Saved ${resolutions.size} resolutions`)
-    }
-  } catch (e) {
-    console.error('Error saving to Redis:', e)
-  }
-}
-
-async function loadConversation(convId: string): Promise<any[]> {
-  try {
-    const client = await getRedisClient()
-    if (client && isRedisConnected) {
-      const data = await client.get(`conversation:${convId}`)
-      if (data) {
-        return JSON.parse(data)
-      }
-    }
-  } catch (e) {
-    console.error('Error loading conversation:', e)
-  }
-  
-  return inMemoryConversations.get(convId) || []
-}
-
-async function saveConversation(convId: string, messages: any[]): Promise<void> {
-  // Update in-memory cache
-  inMemoryConversations.set(convId, messages)
-  
-  // Try to save to Redis (expires after 24 hours)
-  try {
-    const client = await getRedisClient()
-    if (client && isRedisConnected) {
-      await client.setEx(`conversation:${convId}`, 86400, JSON.stringify(messages))
-    }
-  } catch (e) {
-    console.error('Error saving conversation:', e)
-  }
-}
+import {
+  loadResolutions,
+  saveResolutions,
+  loadConversation,
+  saveConversation,
+  DatabaseError,
+  type Resolution,
+  type Message
+} from './lib/db'
 
 // ============================================================================
 // Tool Implementations
@@ -133,10 +31,10 @@ interface ToolResult {
   resolutions?: any[]
 }
 
-function createResolution(input: any, resolutions: Map<string, any>): ToolResult {
+function createResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const activeResolutions = Array.from(resolutions.values()).filter(
-      (r: any) => r.status === 'active'
+      (r) => r.status === 'active'
     )
     
     if (activeResolutions.length >= 5) {
@@ -156,7 +54,7 @@ function createResolution(input: any, resolutions: Map<string, any>): ToolResult
     }
 
     const id = uuidv4()
-    const resolution = {
+    const resolution: Resolution = {
       id,
       title: input.title,
       measurable_criteria: input.measurable_criteria,
@@ -164,7 +62,7 @@ function createResolution(input: any, resolutions: Map<string, any>): ToolResult
       status: 'active',
       createdAt: new Date().toISOString(),
       updates: [],
-      completedAt: null
+      completedAt: undefined
     }
 
     resolutions.set(id, resolution)
@@ -185,7 +83,7 @@ function createResolution(input: any, resolutions: Map<string, any>): ToolResult
   }
 }
 
-function editResolution(input: any, resolutions: Map<string, any>): ToolResult {
+function editResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const { resolution_id, title, measurable_criteria, context } = input
 
@@ -255,15 +153,15 @@ function editResolution(input: any, resolutions: Map<string, any>): ToolResult {
   }
 }
 
-function listResolutions(input: any, resolutions: Map<string, any>): ToolResult {
+function listResolutions(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const all = Array.from(resolutions.values())
     let filtered = all
 
     if (input.status === 'active') {
-      filtered = all.filter((r: any) => r.status === 'active')
+      filtered = all.filter((r) => r.status === 'active')
     } else if (input.status === 'completed') {
-      filtered = all.filter((r: any) => r.status === 'completed')
+      filtered = all.filter((r) => r.status === 'completed')
     }
 
     console.log(`📋 Listed ${filtered.length} ${input.status} resolutions`)
@@ -284,7 +182,7 @@ function listResolutions(input: any, resolutions: Map<string, any>): ToolResult 
   }
 }
 
-function completeResolution(input: any, resolutions: Map<string, any>): ToolResult {
+function completeResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     if (!input.id) {
       return {
@@ -323,7 +221,7 @@ function completeResolution(input: any, resolutions: Map<string, any>): ToolResu
   }
 }
 
-function deleteResolution(input: any, resolutions: Map<string, any>): ToolResult {
+function deleteResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     if (!input.id) {
       return {
@@ -361,10 +259,10 @@ function deleteResolution(input: any, resolutions: Map<string, any>): ToolResult
   }
 }
 
-function prioritizeResolutions(input: any, resolutions: Map<string, any>): ToolResult {
+function prioritizeResolutions(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const activeResolutions = Array.from(resolutions.values()).filter(
-      (r: any) => r.status === 'active'
+      (r) => r.status === 'active'
     )
 
     if (activeResolutions.length === 0) {
@@ -378,7 +276,6 @@ function prioritizeResolutions(input: any, resolutions: Map<string, any>): ToolR
     const timePerWeek = input.timePerWeek || 20
     const focusArea = input.focusArea || 'balanced growth'
 
-    // Simple prioritization strategy
     const strategy = {
       immediate: [] as any[],
       secondary: [] as any[],
@@ -426,7 +323,7 @@ function prioritizeResolutions(input: any, resolutions: Map<string, any>): ToolR
 }
 
 // Tool mapping
-const toolImplementations: Record<string, Function> = {
+const toolImplementations: Record<string, (input: any, resolutions: Map<string, Resolution>) => ToolResult> = {
   create_resolution: createResolution,
   edit_resolution: editResolution,
   list_resolutions: listResolutions,
@@ -587,11 +484,6 @@ Help Turph create, manage, and achieve meaningful resolutions through thoughtful
 
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-}
-
 interface ChatResponse {
   text: string
   toolsUsed: string[]
@@ -600,7 +492,7 @@ interface ChatResponse {
 
 async function handleChatMessage(
   messages: Message[],
-  resolutions: Map<string, any>
+  resolutions: Map<string, Resolution>
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null
@@ -724,19 +616,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Validate input
       if (!message || typeof message !== 'string') {
-        const resolutions = await loadResolutions()
         return res.status(400).json({
           error: 'Missing or invalid message',
-          resolutions: Array.from(resolutions.values()).filter(r => r.status === 'active')
+          details: 'A message string is required'
         })
       }
 
       // Generate or use conversation ID
       const convId = conversationId || `conv-${uuidv4()}`
 
-      // Load state
-      const resolutions = await loadResolutions()
-      const messages = await loadConversation(convId)
+      // Load state from database (no fallback)
+      let resolutions: Map<string, Resolution>
+      let messages: Message[]
+      
+      try {
+        resolutions = await loadResolutions()
+        messages = await loadConversation(convId)
+      } catch (error) {
+        if (error instanceof DatabaseError) {
+          console.error('[Chat] Database error:', error.details)
+          return res.status(503).json({
+            error: 'Database unavailable',
+            details: error.details,
+            code: error.code
+          })
+        }
+        throw error
+      }
 
       // Add user message
       messages.push({
@@ -755,9 +661,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         content: response.text
       })
 
-      // Save state
-      await saveResolutions(resolutions)
-      await saveConversation(convId, messages)
+      // Save state to database
+      try {
+        await saveResolutions(resolutions)
+        await saveConversation(convId, messages)
+      } catch (error) {
+        if (error instanceof DatabaseError) {
+          console.error('[Chat] Failed to save state:', error.details)
+          // Still return the response, but log the save failure
+        } else {
+          throw error
+        }
+      }
 
       // Get current list of active resolutions
       const allResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
@@ -776,19 +691,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[Chat] Error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       
-      // Try to get resolutions even on error
-      let activeResolutions: any[] = []
-      try {
-        const resolutions = await loadResolutions()
-        activeResolutions = Array.from(resolutions.values()).filter(r => r.status === 'active')
-      } catch (e) {
-        // Ignore errors loading resolutions
-      }
-
       return res.status(500).json({
         error: 'Failed to process message',
-        details: errorMessage,
-        resolutions: activeResolutions
+        details: errorMessage
       })
     }
   }

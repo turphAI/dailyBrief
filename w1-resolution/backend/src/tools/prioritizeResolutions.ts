@@ -1,4 +1,4 @@
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 interface PrioritizationInput {
   timePerWeek?: number // Hours available per week
@@ -43,11 +43,11 @@ interface PrioritizationStrategy {
  */
 export function prioritizeResolutions(
   input: PrioritizationInput,
-  resolutions: Map<string, any>
+  resolutions: Map<string, Resolution>
 ): ToolResult {
   try {
     const activeResolutions = Array.from(resolutions.values()).filter(
-      (r: any) => r.status === 'active'
+      (r) => r.status === 'active'
     )
 
     if (activeResolutions.length === 0) {

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 /**
  * Create a new resolution with measurable criteria
@@ -7,10 +7,10 @@ import { ToolResult } from './types'
  * @param resolutions - Map of all resolutions
  * @returns ToolResult with created resolution
  */
-export function createResolution(input: any, resolutions: Map<string, any>): ToolResult {
+export function createResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const activeResolutions = Array.from(resolutions.values()).filter(
-      (r: any) => r.status === 'active'
+      (r) => r.status === 'active'
     )
     
     if (activeResolutions.length >= 5) {
@@ -30,7 +30,7 @@ export function createResolution(input: any, resolutions: Map<string, any>): Too
     }
 
     const id = uuidv4()
-    const resolution = {
+    const resolution: Resolution = {
       id,
       title: input.title,
       measurable_criteria: input.measurable_criteria,
@@ -38,7 +38,7 @@ export function createResolution(input: any, resolutions: Map<string, any>): Too
       status: 'active',
       createdAt: new Date().toISOString(),
       updates: [],
-      completedAt: null
+      completedAt: undefined
     }
 
     resolutions.set(id, resolution)

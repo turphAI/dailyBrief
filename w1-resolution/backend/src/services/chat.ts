@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { v4 as uuidv4 } from 'uuid'
 import { 
   createResolution, 
   editResolution,
@@ -8,6 +7,7 @@ import {
   deleteResolution,
   prioritizeResolutions
 } from '../tools/index'
+import type { Resolution } from '../lib/db.js'
 
 let client: Anthropic | null = null
 
@@ -195,7 +195,7 @@ const toolImplementations: Record<string, Function> = {
 
 export async function handleChatMessage(
   messages: Message[],
-  resolutions: Map<string, any>
+  resolutions: Map<string, Resolution>
 ): Promise<ChatResponse> {
   const toolsUsed: string[] = []
   let resolutionUpdate: any = null

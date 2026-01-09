@@ -1,4 +1,4 @@
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 /**
  * Mark a resolution as completed
@@ -6,7 +6,7 @@ import { ToolResult } from './types'
  * @param resolutions - Map of all resolutions
  * @returns ToolResult with completed resolution
  */
-export function completeResolution(input: any, resolutions: Map<string, any>): ToolResult {
+export function completeResolution(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     if (!input.id) {
       return {

@@ -1,4 +1,4 @@
-import { ToolResult } from './types'
+import { ToolResult, Resolution } from './types'
 
 /**
  * List resolutions filtered by status
@@ -6,15 +6,15 @@ import { ToolResult } from './types'
  * @param resolutions - Map of all resolutions
  * @returns ToolResult with filtered list of resolutions
  */
-export function listResolutions(input: any, resolutions: Map<string, any>): ToolResult {
+export function listResolutions(input: any, resolutions: Map<string, Resolution>): ToolResult {
   try {
     const all = Array.from(resolutions.values())
     let filtered = all
 
     if (input.status === 'active') {
-      filtered = all.filter((r: any) => r.status === 'active')
+      filtered = all.filter((r) => r.status === 'active')
     } else if (input.status === 'completed') {
-      filtered = all.filter((r: any) => r.status === 'completed')
+      filtered = all.filter((r) => r.status === 'completed')
     }
 
     console.log(`📋 Listed ${filtered.length} ${input.status} resolutions`)
