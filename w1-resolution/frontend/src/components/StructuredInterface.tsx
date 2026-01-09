@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, PieChart, PartyPopper, Settings2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PieChart, PartyPopper, Settings2, Check } from 'lucide-react'
 import ResolutionRadar from './ResolutionRadar'
 import ResolutionDetailView from './ResolutionDetailView'
 import {
@@ -7,6 +7,7 @@ import {
   categorizeTier,
   calculateProgress,
 } from '../utils/resolutionViz'
+import { calculateCadenceProgress } from '../types/resolution'
 
 type ViewType = 'dashboard' | 'resolutions' | 'detail' | 'settings'
 type NavState = 'collapsed' | 'transition' | 'open'
@@ -258,6 +259,7 @@ export default function StructuredInterface({
                     {activeResolutions.map((resolution: any, index: number) => {
                       const tier = categorizeTier(resolution, activeResolutions, index)
                       const progress = calculateProgress(resolution)
+                      const cadenceProgress = calculateCadenceProgress(resolution)
                       const tierColors = {
                         immediate: 'bg-orange-500',
                         secondary: 'bg-blue-500',
@@ -276,17 +278,35 @@ export default function StructuredInterface({
                               <p className="text-sm font-medium truncate">
                                 {resolution.title}
                               </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-primary transition-all"
-                                    style={{ width: `${progress}%` }}
-                                  />
+                              
+                              {/* Cadence progress badge */}
+                              {cadenceProgress && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 ${
+                                    cadenceProgress.isOnTrack 
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
+                                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                                  }`}>
+                                    {cadenceProgress.isOnTrack && <Check className="w-3 h-3" />}
+                                    {cadenceProgress.completedCount}/{cadenceProgress.targetCount} {cadenceProgress.periodLabel}
+                                  </span>
                                 </div>
-                                <span className="text-xs text-muted-foreground w-8">
-                                  {progress}%
-                                </span>
-                              </div>
+                              )}
+                              
+                              {/* Overall progress bar (only show if no cadence) */}
+                              {!cadenceProgress && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-primary transition-all"
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground w-8">
+                                    {progress}%
+                                  </span>
+                                </div>
+                              )}
                             </div>
                             <ChevronRight className="w-4 h-4 text-muted-foreground" />
                           </div>

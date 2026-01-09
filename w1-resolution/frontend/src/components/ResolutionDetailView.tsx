@@ -1,8 +1,177 @@
 import React from 'react'
-import { ChevronLeft, CheckCircle2, Trash2, Calendar, Target, Sparkles } from 'lucide-react'
+import { ChevronLeft, CheckCircle2, Trash2, Calendar, Target, Sparkles, TrendingUp, Trophy, Activity, Check } from 'lucide-react'
 import { Button } from './ui/button'
-import { Resolution } from '../types/resolution'
+import { Resolution, Milestone, calculateCadenceProgress } from '../types/resolution'
 import { getTierInfo } from '../utils/resolutionViz'
+
+// Cadence Progress Section Component
+function CadenceProgressSection({ resolution }: { resolution: Resolution }) {
+  const cadenceProgress = calculateCadenceProgress(resolution)
+  if (!cadenceProgress) return null
+  
+  const { completedCount, targetCount, isOnTrack, remainingCount, periodLabel } = cadenceProgress
+  const progressPercent = Math.min(100, (completedCount / targetCount) * 100)
+  
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Activity className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Activity Progress</h3>
+      </div>
+      
+      <div className={`p-4 rounded-lg border ${
+        isOnTrack 
+          ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' 
+          : 'bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800'
+      }`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-sm font-medium ${
+            isOnTrack ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'
+          }`}>
+            {isOnTrack ? '✓ On track!' : `${remainingCount} more to go`}
+          </span>
+          <span className={`text-lg font-bold ${
+            isOnTrack ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'
+          }`}>
+            {completedCount}/{targetCount}
+          </span>
+        </div>
+        
+        <div className="w-full h-2.5 bg-white/50 dark:bg-black/20 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all rounded-full ${
+              isOnTrack ? 'bg-emerald-500' : 'bg-amber-500'
+            }`}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        
+        <p className="text-xs mt-2 opacity-70">
+          {resolution.cadence?.description || `${targetCount}x ${resolution.cadence?.period}`} • {periodLabel}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Milestones Section Component
+function MilestonesSection({ milestones }: { milestones: Milestone[] }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Trophy className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Milestones</h3>
+      </div>
+      
+      <div className="space-y-2">
+        {milestones.map((milestone) => {
+          const isComplete = milestone.completedAt !== undefined
+          const progressPercent = Math.min(100, (milestone.current / milestone.target) * 100)
+          
+          return (
+            <div 
+              key={milestone.id}
+              className={`p-3 rounded-lg border ${
+                isComplete 
+                  ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800'
+                  : 'bg-muted/30 border-border'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-sm font-medium flex items-center gap-1.5 ${
+                  isComplete ? 'text-emerald-700 dark:text-emerald-300' : ''
+                }`}>
+                  {isComplete && <Check className="w-3.5 h-3.5" />}
+                  {milestone.title}
+                </span>
+                <span className={`text-sm font-semibold ${
+                  isComplete ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'
+                }`}>
+                  {milestone.current}/{milestone.target}
+                </span>
+              </div>
+              
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all rounded-full ${
+                    isComplete ? 'bg-emerald-500' : 'bg-primary'
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              
+              {milestone.unit && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {milestone.unit}
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Activity History Section Component  
+function ActivityHistorySection({ resolution }: { resolution: Resolution }) {
+  const completions = resolution.activityCompletions || []
+  if (completions.length === 0) return null
+  
+  // Sort by most recent first and take last 5
+  const recentCompletions = [...completions]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 5)
+  
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Recent Activity</h3>
+      </div>
+      
+      <div className="space-y-2">
+        {recentCompletions.map((completion) => {
+          const date = new Date(completion.timestamp)
+          const formattedDate = date.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+          })
+          const formattedTime = date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit'
+          })
+          
+          return (
+            <div 
+              key={completion.id}
+              className="flex items-start gap-3 p-2 rounded-lg bg-muted/30"
+            >
+              <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {completion.description}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formattedDate} at {formattedTime}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+        
+        {completions.length > 5 && (
+          <p className="text-xs text-muted-foreground text-center pt-1">
+            + {completions.length - 5} more activities
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 interface ResolutionDetailViewProps {
   resolution: Resolution
@@ -64,6 +233,16 @@ export default function ResolutionDetailView({
           </div>
           <p className="text-sm">{tierInfo.description}</p>
         </div>
+
+        {/* Cadence Progress (if resolution has cadence) */}
+        {resolution.cadence && (
+          <CadenceProgressSection resolution={resolution} />
+        )}
+
+        {/* Milestones (if any) */}
+        {resolution.milestones && resolution.milestones.length > 0 && (
+          <MilestonesSection milestones={resolution.milestones} />
+        )}
 
         {/* Progress */}
         <div className="space-y-3">
@@ -141,6 +320,11 @@ export default function ResolutionDetailView({
             )}
           </div>
         </div>
+
+        {/* Recent Activity (if any completions) */}
+        {resolution.activityCompletions && resolution.activityCompletions.length > 0 && (
+          <ActivityHistorySection resolution={resolution} />
+        )}
 
         {/* Tips based on tier */}
         <div className="space-y-3">
