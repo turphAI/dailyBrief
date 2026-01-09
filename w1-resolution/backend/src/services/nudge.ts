@@ -11,6 +11,11 @@ import type {
   UserPreferences, 
   NudgeRecord 
 } from '../lib/db.js'
+import { 
+  hasMetCadenceTarget, 
+  calculateCadenceProgress,
+  getCadenceProgressSummary 
+} from '../lib/db.js'
 
 // ============================================================================
 // Types
@@ -23,6 +28,13 @@ export interface NudgeDecision {
   type?: NudgeRecord['type']
   reason?: string
   daysSinceLastNudge?: number
+  cadenceProgress?: {
+    completedCount: number
+    targetCount: number
+    remainingCount: number
+    periodStart: string
+    periodEnd: string
+  }
 }
 
 export interface NudgeContext {
@@ -91,22 +103,59 @@ export function shouldNudge(
     return { shouldNudge: false, reason: 'No active resolutions with updates enabled' }
   }
 
+  // Filter out resolutions that have already met their cadence target for this period
+  const resolutionsNeedingAttention = activeResolutions.filter(r => {
+    // If resolution has a cadence, check if target is met
+    if (r.cadence) {
+      const hasMet = hasMetCadenceTarget(r)
+      if (hasMet) {
+        console.log(`[Nudge] Skipping "${r.title}" - cadence target already met for this period`)
+        return false
+      }
+    }
+    return true
+  })
+
+  if (resolutionsNeedingAttention.length === 0) {
+    return { shouldNudge: false, reason: 'All resolutions with cadence have met their targets' }
+  }
+
   // Get frequency threshold
   const threshold = FREQUENCY_THRESHOLDS[preferences.inConversation.frequency]
 
   // Find resolution most in need of check-in
-  // Sort by longest time since last nudge
+  // Sort by longest time since last nudge, prioritizing those with cadence not yet met
   const now = Date.now()
-  const candidates = activeResolutions
+  const candidates = resolutionsNeedingAttention
     .map(r => {
       const lastNudge = r.updateSettings?.lastNudgeAt
       const timeSince = lastNudge 
         ? now - new Date(lastNudge).getTime()
         : Infinity
-      return { resolution: r, timeSince }
+      
+      // Get cadence progress for priority scoring
+      const progress = calculateCadenceProgress(r)
+      
+      return { 
+        resolution: r, 
+        timeSince,
+        cadenceProgress: progress
+      }
     })
     .filter(c => c.timeSince >= threshold)
-    .sort((a, b) => b.timeSince - a.timeSince)
+    .sort((a, b) => {
+      // Prioritize resolutions behind on cadence
+      if (a.cadenceProgress && b.cadenceProgress) {
+        // Lower completion rate = higher priority
+        const aUrgency = 1 - a.cadenceProgress.completionRate
+        const bUrgency = 1 - b.cadenceProgress.completionRate
+        if (aUrgency !== bUrgency) {
+          return bUrgency - aUrgency
+        }
+      }
+      // Fall back to time since last nudge
+      return b.timeSince - a.timeSince
+    })
 
   if (candidates.length === 0) {
     return { shouldNudge: false, reason: 'No resolutions due for nudge' }
@@ -118,6 +167,15 @@ export function shouldNudge(
   // Determine nudge type based on context
   const type = determineNudgeType(candidate.resolution, daysSince)
 
+  // Build cadence progress info if available
+  const cadenceProgressInfo = candidate.cadenceProgress ? {
+    completedCount: candidate.cadenceProgress.completedCount,
+    targetCount: candidate.cadenceProgress.targetCount,
+    remainingCount: candidate.cadenceProgress.remainingCount,
+    periodStart: candidate.cadenceProgress.periodStart,
+    periodEnd: candidate.cadenceProgress.periodEnd
+  } : undefined
+
   return {
     shouldNudge: true,
     resolutionId: candidate.resolution.id,
@@ -126,7 +184,8 @@ export function shouldNudge(
     reason: daysSince === Infinity 
       ? 'Never checked in on this resolution'
       : `${daysSince} days since last check-in`,
-    daysSinceLastNudge: daysSince === Infinity ? undefined : daysSince
+    daysSinceLastNudge: daysSince === Infinity ? undefined : daysSince,
+    cadenceProgress: cadenceProgressInfo
   }
 }
 
@@ -202,35 +261,63 @@ export function generateNudgeContext(decision: NudgeDecision): NudgeContext {
 function generateNudgePrompt(decision: NudgeDecision): string {
   const title = decision.resolutionTitle || 'their resolution'
   
+  // Get cadence context if available
+  let cadenceContext = ''
+  if (decision.cadenceProgress) {
+    const { completedCount, targetCount, remainingCount } = decision.cadenceProgress
+    const periodName = decision.cadenceProgress.periodEnd 
+      ? getPeriodName(new Date(decision.cadenceProgress.periodStart), new Date(decision.cadenceProgress.periodEnd))
+      : 'this period'
+    
+    if (completedCount === 0) {
+      cadenceContext = ` They haven't logged any activities for ${periodName} yet (target: ${targetCount}).`
+    } else if (remainingCount > 0) {
+      cadenceContext = ` They've done ${completedCount}/${targetCount} ${periodName} (${remainingCount} to go).`
+    }
+  }
+  
   switch (decision.type) {
     case 'check_in':
-      return `[NUDGE CONTEXT] It's been a few days since Turph updated on "${title}". ` +
+      return `[NUDGE CONTEXT] It's been a few days since Turph updated on "${title}".${cadenceContext} ` +
         `Naturally weave in a question about their progress. Keep it warm and casual, not pushy. ` +
+        `If they mention completing an activity, use log_activity_completion to record it. ` +
         `Example: "By the way, how's ${title} going lately?"`
 
     case 'gentle_nudge':
-      return `[NUDGE CONTEXT] It's been over a week since Turph checked in on "${title}". ` +
+      return `[NUDGE CONTEXT] It's been over a week since Turph checked in on "${title}".${cadenceContext} ` +
         `Gently ask about their progress without being intrusive. ` +
+        `If they mention completing an activity, use log_activity_completion to record it. ` +
         `Example: "I noticed we haven't talked about ${title} in a while - how are things going with that?"`
 
     case 'encouragement':
-      return `[NUDGE CONTEXT] Turph was struggling with "${title}" last time. ` +
+      return `[NUDGE CONTEXT] Turph was struggling with "${title}" last time.${cadenceContext} ` +
         `Check in with empathy and support. Focus on what might be blocking them. ` +
         `Example: "I remember ${title} was tough last time - how are you feeling about it now?"`
 
     case 'streak':
-      return `[NUDGE CONTEXT] Turph has been on a streak with "${title}"! ` +
+      return `[NUDGE CONTEXT] Turph has been on a streak with "${title}"!${cadenceContext} ` +
         `Acknowledge their consistency and ask about their progress. ` +
         `Example: "You've been really consistent with ${title} lately - that's awesome! How's it feeling?"`
 
     case 'milestone':
-      return `[NUDGE CONTEXT] Turph might be approaching a milestone with "${title}". ` +
+      return `[NUDGE CONTEXT] Turph might be approaching a milestone with "${title}".${cadenceContext} ` +
         `Ask about their progress and be ready to celebrate if they've hit it. ` +
         `Example: "How's ${title} coming along? You've been making great progress!"`
 
     default:
-      return `[NUDGE CONTEXT] Check in on "${title}" with Turph naturally.`
+      return `[NUDGE CONTEXT] Check in on "${title}" with Turph naturally.${cadenceContext}`
   }
+}
+
+/**
+ * Get a human-readable period name
+ */
+function getPeriodName(start: Date, end: Date): string {
+  const diffDays = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000))
+  
+  if (diffDays <= 1) return 'today'
+  if (diffDays <= 7) return 'this week'
+  return 'this month'
 }
 
 // ============================================================================

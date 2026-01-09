@@ -7,9 +7,12 @@ import {
   deleteResolution,
   prioritizeResolutions,
   configureUpdates,
-  logUpdate
+  logUpdate,
+  logActivityCompletion,
+  configureCadence
 } from '../tools/index'
 import type { Resolution, UserPreferences, NudgeRecord } from '../lib/db.js'
+import { getCadenceProgressSummary, hasMetCadenceTarget } from '../lib/db.js'
 import {
   shouldNudge,
   generateNudgeContext,
@@ -229,6 +232,73 @@ const TOOLS = [
       },
       required: ['resolution_id', 'type', 'content']
     }
+  },
+  {
+    name: 'log_activity_completion',
+    description: 'Log when the user completes an activity that counts toward a resolution with a recurring cadence. Use this when the user says things like "I just hiked Mt. Washington", "Did my morning run", "Finished another book", etc. This tracks progress toward their cadence goal (e.g., 2/3 hikes this week).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: {
+          type: 'string',
+          description: 'The resolution this activity counts toward'
+        },
+        description: {
+          type: 'string',
+          description: 'What was completed (e.g., "Hiked Mt. Washington", "30 minute morning run", "Read Chapter 5")'
+        },
+        completed_at: {
+          type: 'string',
+          description: 'Optional ISO timestamp of when the activity was completed. Defaults to now if not provided.'
+        },
+        original_message: {
+          type: 'string',
+          description: 'The user\'s original message that indicated the completion'
+        }
+      },
+      required: ['resolution_id', 'description']
+    }
+  },
+  {
+    name: 'configure_cadence',
+    description: 'Set up the recurring activity cadence for a resolution. Use when creating or updating a resolution that involves regular activities (e.g., "hike once a week", "exercise 3 times per week", "read daily"). Can also set up milestones.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        resolution_id: {
+          type: 'string',
+          description: 'The resolution to configure'
+        },
+        frequency: {
+          type: 'number',
+          description: 'How many times the activity should be done per period (e.g., 3 for "3 times per week")'
+        },
+        period: {
+          type: 'string',
+          enum: ['day', 'week', 'month'],
+          description: 'The time period for the frequency'
+        },
+        target_days: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Optional: specific days of week (0=Sunday, 6=Saturday)'
+        },
+        milestones: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Milestone name (e.g., "Complete 10 hikes")' },
+              target: { type: 'number', description: 'Target count to reach' },
+              unit: { type: 'string', description: 'Optional unit (e.g., "hikes", "books")' }
+            },
+            required: ['title', 'target']
+          },
+          description: 'Optional: milestones to track cumulative progress'
+        }
+      },
+      required: ['resolution_id', 'frequency', 'period']
+    }
   }
 ]
 
@@ -258,13 +328,39 @@ Help Turph create, manage, and achieve meaningful resolutions through thoughtful
 5. If user hits the 5-resolution limit, suggest reviewing existing ones
 6. Use list_resolutions to check current status before creating new ones
 
+## Activity Completion Recognition (IMPORTANT)
+When Turph mentions completing an activity, recognize it and log it!
+
+**Example patterns to recognize:**
+- "I just hiked Mt. Washington!" → log_activity_completion for hiking resolution
+- "Did my morning run today" → log_activity_completion for exercise resolution
+- "Finished another chapter" → log_activity_completion for reading resolution
+- "Just got back from the gym" → log_activity_completion for fitness resolution
+- "Meditated for 20 minutes" → log_activity_completion for meditation resolution
+
+**How to handle:**
+1. First, use list_resolutions to find the matching resolution
+2. Use log_activity_completion with:
+   - resolution_id: the matched resolution
+   - description: what they did (be specific)
+   - original_message: their exact words
+3. Share their current progress (e.g., "That's 2/3 for this week!")
+4. Celebrate when they hit their target for the period
+5. If they've exceeded their goal, acknowledge the bonus effort!
+
+**When creating resolutions with recurring activities:**
+- If the resolution involves doing something regularly (daily, weekly, monthly), use configure_cadence after creating the resolution
+- Extract the cadence from the measurable criteria (e.g., "3 times per week" → frequency: 3, period: 'week')
+- Set up milestones for long-term goals if mentioned
+
 ## Progress Tracking
 When Turph shares progress, struggles, or updates about their resolutions:
 1. Acknowledge what they shared with empathy
-2. Use log_update to record the update (progress, setback, milestone, or note)
-3. Detect sentiment (positive, neutral, struggling) and respond appropriately
-4. For setbacks, be supportive and help identify blockers
-5. For progress, celebrate and reinforce the positive behavior
+2. For completed activities → use log_activity_completion (tracks cadence progress)
+3. For general updates → use log_update (progress, setback, milestone, or note)
+4. Detect sentiment (positive, neutral, struggling) and respond appropriately
+5. For setbacks, be supportive and help identify blockers
+6. For progress, celebrate and reinforce the positive behavior
 
 ## Update/Reminder Settings
 Turph can configure reminder preferences via conversation:
@@ -277,8 +373,9 @@ Turph can configure reminder preferences via conversation:
 When you receive [NUDGE CONTEXT], naturally weave in a question about the mentioned resolution:
 - Don't be pushy or formulaic
 - Make it feel like a natural part of the conversation
-- If the user responds with progress, use log_update to record it
+- If the user responds with progress, use log_activity_completion to record it
 - Adjust your tone based on their response
+- If the user has already hit their cadence target, don't push for more (just celebrate!)
 
 Remember: You're coaching Turph toward meaningful, achievable growth. Be supportive but hold high standards.`
 
@@ -310,7 +407,11 @@ const getToolImplementations = (preferences: UserPreferences) => ({
   configure_updates: (input: any, resolutions: Map<string, Resolution>) => 
     configureUpdates(input, resolutions, preferences),
   log_update: (input: any, resolutions: Map<string, Resolution>) => 
-    logUpdate(input, resolutions)
+    logUpdate(input, resolutions),
+  log_activity_completion: (input: any, resolutions: Map<string, Resolution>) => 
+    logActivityCompletion(input, resolutions),
+  configure_cadence: (input: any, resolutions: Map<string, Resolution>) => 
+    configureCadence(input, resolutions)
 })
 
 export async function handleChatMessage(

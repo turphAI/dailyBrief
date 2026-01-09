@@ -1,4 +1,14 @@
-import type { Resolution, Update, UserPreferences, NudgeRecord, ResolutionUpdateSettings } from '../lib/db.js'
+import type { 
+  Resolution, 
+  Update, 
+  UserPreferences, 
+  NudgeRecord, 
+  ResolutionUpdateSettings,
+  ActivityCompletion,
+  CadenceProgress,
+  Milestone,
+  ResolutionCadence
+} from '../lib/db.js'
 
 export interface ToolInput {
   [key: string]: any
@@ -13,6 +23,8 @@ export interface ToolResult {
   resolutions?: Resolution[]
   preferences?: UserPreferences
   update?: Update
+  activityCompletion?: ActivityCompletion
+  cadenceProgress?: CadenceProgress | null
 }
 
 export interface ToolOutput {
@@ -26,5 +38,9 @@ export type {
   Update, 
   UserPreferences, 
   NudgeRecord,
-  ResolutionUpdateSettings 
+  ResolutionUpdateSettings,
+  ActivityCompletion,
+  CadenceProgress,
+  Milestone,
+  ResolutionCadence
 } from '../lib/db.js'

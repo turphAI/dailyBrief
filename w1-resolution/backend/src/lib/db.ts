@@ -34,6 +34,11 @@ export interface Resolution {
   completedAt?: string
   updates: Update[]
   updateSettings: ResolutionUpdateSettings
+  
+  // Activity tracking (optional - for resolutions with recurring activities)
+  cadence?: ResolutionCadence          // How often activity should be done
+  milestones?: Milestone[]             // Checkpoints toward completion
+  activityCompletions?: ActivityCompletion[]  // History of completed activities
 }
 
 export interface Update {
@@ -44,6 +49,62 @@ export interface Update {
   progressDelta?: number        // -100 to 100
   createdAt: string
   triggeredBy?: 'user' | 'nudge' | 'sms'
+}
+
+// ============================================================================
+// Activity Tracking Types (Cadence & Completions)
+// ============================================================================
+
+/**
+ * Defines how often an activity should be performed for a resolution.
+ * Example: { frequency: 3, period: 'week' } = "3 times per week"
+ */
+export interface ResolutionCadence {
+  frequency: number                    // How many times (e.g., 1, 3, 5)
+  period: 'day' | 'week' | 'month'     // Per what period
+  targetDays?: number[]                // Optional: specific days (0=Sun, 6=Sat)
+  description?: string                 // Human-readable: "once a week"
+}
+
+/**
+ * A milestone is a significant checkpoint toward completing a resolution.
+ * Example: "Complete 10 hikes" or "Read 12 books"
+ */
+export interface Milestone {
+  id: string
+  title: string                        // "Complete 10 hikes"
+  target: number                       // Target count (e.g., 10)
+  current: number                      // Current progress count
+  unit?: string                        // Optional unit: "hikes", "books", "workouts"
+  completedAt?: string                 // ISO timestamp when milestone was achieved
+  createdAt: string
+}
+
+/**
+ * Records a single activity completion event.
+ * Created when user reports completing an activity (e.g., "I just hiked Mt. Washington!")
+ */
+export interface ActivityCompletion {
+  id: string
+  timestamp: string                    // When the activity was completed
+  description: string                  // What was done: "Hiked Mt. Washington"
+  matchedFromMessage?: string          // Original user message that triggered this
+  periodStart: string                  // Start of the cadence period this counts toward
+  periodEnd: string                    // End of the cadence period
+  createdAt: string                    // When this record was created
+}
+
+/**
+ * Progress status for current cadence period
+ */
+export interface CadenceProgress {
+  periodStart: string
+  periodEnd: string
+  completedCount: number               // How many activities completed this period
+  targetCount: number                  // How many needed (from cadence.frequency)
+  isOnTrack: boolean                   // completedCount >= targetCount
+  remainingCount: number               // targetCount - completedCount (min 0)
+  completionRate: number               // 0-1, completedCount / targetCount
 }
 
 export interface NudgeRecord {
@@ -507,4 +568,101 @@ export async function getDueNudges(): Promise<NudgeRecord[]> {
   }
 
   return nudges
+}
+
+// ============================================================================
+// Cadence & Activity Progress Helpers
+// ============================================================================
+
+/**
+ * Get the start and end of the current cadence period
+ */
+export function getCurrentPeriodBounds(
+  period: 'day' | 'week' | 'month',
+  referenceDate: Date = new Date()
+): { start: Date; end: Date } {
+  const start = new Date(referenceDate)
+  const end = new Date(referenceDate)
+  
+  switch (period) {
+    case 'day':
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+      break
+    case 'week':
+      // Start on Sunday
+      const dayOfWeek = start.getDay()
+      start.setDate(start.getDate() - dayOfWeek)
+      start.setHours(0, 0, 0, 0)
+      end.setDate(start.getDate() + 6)
+      end.setHours(23, 59, 59, 999)
+      break
+    case 'month':
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+      end.setMonth(end.getMonth() + 1)
+      end.setDate(0) // Last day of current month
+      end.setHours(23, 59, 59, 999)
+      break
+  }
+  
+  return { start, end }
+}
+
+/**
+ * Calculate progress for a resolution's current cadence period
+ */
+export function calculateCadenceProgress(resolution: Resolution): CadenceProgress | null {
+  if (!resolution.cadence) {
+    return null
+  }
+  
+  const { start, end } = getCurrentPeriodBounds(resolution.cadence.period)
+  const completions = resolution.activityCompletions || []
+  
+  // Count completions within current period
+  const periodCompletions = completions.filter(c => {
+    const timestamp = new Date(c.timestamp)
+    return timestamp >= start && timestamp <= end
+  })
+  
+  const completedCount = periodCompletions.length
+  const targetCount = resolution.cadence.frequency
+  const remainingCount = Math.max(0, targetCount - completedCount)
+  
+  return {
+    periodStart: start.toISOString(),
+    periodEnd: end.toISOString(),
+    completedCount,
+    targetCount,
+    isOnTrack: completedCount >= targetCount,
+    remainingCount,
+    completionRate: targetCount > 0 ? Math.min(1, completedCount / targetCount) : 1
+  }
+}
+
+/**
+ * Check if a resolution has met its cadence target for the current period
+ */
+export function hasMetCadenceTarget(resolution: Resolution): boolean {
+  const progress = calculateCadenceProgress(resolution)
+  return progress?.isOnTrack ?? true // If no cadence, consider it "on track"
+}
+
+/**
+ * Get a human-readable summary of cadence progress
+ */
+export function getCadenceProgressSummary(resolution: Resolution): string | null {
+  const progress = calculateCadenceProgress(resolution)
+  if (!progress) return null
+  
+  const cadence = resolution.cadence!
+  const periodName = cadence.period === 'day' ? 'today' : 
+                     cadence.period === 'week' ? 'this week' : 'this month'
+  
+  if (progress.isOnTrack) {
+    return `✓ Completed ${progress.completedCount}/${progress.targetCount} ${periodName}`
+  } else {
+    return `${progress.completedCount}/${progress.targetCount} ${periodName} (${progress.remainingCount} remaining)`
+  }
 }

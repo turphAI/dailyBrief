@@ -10,5 +10,20 @@ export { prioritizeResolutions } from './prioritizeResolutions'
 export { configureUpdates } from './configureUpdates'
 export { logUpdate } from './logUpdate'
 
+// Tools for activity tracking
+export { logActivityCompletion } from './logActivityCompletion'
+export { configureCadence } from './configureCadence'
+
 // Types
-export type { ToolInput, ToolOutput, ToolResult, Resolution, Update, UserPreferences } from './types'
+export type { 
+  ToolInput, 
+  ToolOutput, 
+  ToolResult, 
+  Resolution, 
+  Update, 
+  UserPreferences,
+  ActivityCompletion,
+  CadenceProgress,
+  Milestone,
+  ResolutionCadence
+} from './types'
