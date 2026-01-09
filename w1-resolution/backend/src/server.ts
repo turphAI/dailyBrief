@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 import resolutionRoutes from './routes/resolutions.js'
 import chatRoutes from './routes/chat.js'
+import preferencesRoutes from './routes/preferences.js'
 
 // Load .env.local from project root
 const __filename = fileURLToPath(import.meta.url)
@@ -24,6 +25,7 @@ app.use(express.json())
 // Routes
 app.use('/api/resolutions', resolutionRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/preferences', preferencesRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {
