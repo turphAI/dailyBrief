@@ -27,6 +27,16 @@ export interface ActivityCompletion {
   createdAt: string                    // When this record was created
 }
 
+export interface Update {
+  id: string
+  type: 'progress' | 'setback' | 'milestone' | 'note' | 'check_in_response'
+  content: string
+  sentiment?: 'positive' | 'neutral' | 'struggling'
+  progressDelta?: number              // -100 to 100
+  createdAt: string
+  triggeredBy?: 'user' | 'nudge' | 'sms'
+}
+
 export interface Resolution {
   id: string
   title: string
@@ -35,7 +45,7 @@ export interface Resolution {
   status: 'active' | 'completed'
   createdAt: string
   completedAt?: string
-  updates: any[]
+  updates: Update[]
   progress?: number // 0-100
   
   // Activity tracking (optional - for resolutions with recurring activities)

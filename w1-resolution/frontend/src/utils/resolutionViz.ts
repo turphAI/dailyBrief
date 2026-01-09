@@ -1,8 +1,8 @@
 import { Resolution, ResolutionVisualizationData } from '../types/resolution'
 
 /**
- * Calculate progress for a resolution based on its criteria and time since creation
- * This is a heuristic since we don't have explicit progress tracking yet
+ * Calculate progress for a resolution based on logged updates with progressDelta
+ * Falls back to a time-based heuristic if no explicit progress is tracked
  */
 export function calculateProgress(resolution: Resolution): number {
   // If completed, return 100%
@@ -10,7 +10,31 @@ export function calculateProgress(resolution: Resolution): number {
     return 100
   }
 
-  // If just created (less than 1 week), start with 0%
+  // Check if we have explicit progress updates with progressDelta
+  const updates = resolution.updates || []
+  const progressUpdates = updates.filter(u => u.progressDelta !== undefined && u.progressDelta !== null)
+  
+  if (progressUpdates.length > 0) {
+    // Sum up all progressDelta values from updates
+    const totalProgress = progressUpdates.reduce((sum, update) => {
+      return sum + (update.progressDelta || 0)
+    }, 0)
+    
+    // Clamp between 0 and 100
+    return Math.max(0, Math.min(100, totalProgress))
+  }
+
+  // For cadence-based resolutions, calculate from activity completions
+  if (resolution.cadence && resolution.activityCompletions) {
+    const completions = resolution.activityCompletions.length
+    // Estimate based on typical yearly goal (52 weeks)
+    const estimatedTotal = resolution.cadence.period === 'day' ? 365 :
+                           resolution.cadence.period === 'week' ? 52 : 12
+    const targetCompletions = estimatedTotal * resolution.cadence.frequency
+    return Math.min(100, Math.round((completions / targetCompletions) * 100))
+  }
+
+  // Fallback: time-based heuristic for resolutions without explicit tracking
   const createdAt = new Date(resolution.createdAt)
   const now = new Date()
   const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
@@ -23,16 +47,12 @@ export function calculateProgress(resolution: Resolution): number {
   const criteria = resolution.measurable_criteria.toLowerCase()
 
   if (criteria.includes('daily')) {
-    // Daily resolutions: estimate 1-3% per day up to 50% over time
     return Math.min(daysSinceCreation * 1.5, 50)
   } else if (criteria.includes('weekly') || criteria.includes('per week')) {
-    // Weekly resolutions: slower progression
     return Math.min((daysSinceCreation / 7) * 20, 50)
   } else if (criteria.includes('month')) {
-    // Monthly goals: even slower
     return Math.min((daysSinceCreation / 30) * 15, 40)
   } else {
-    // Default: general progression
     return Math.min((daysSinceCreation / 365) * 30, 50)
   }
 }

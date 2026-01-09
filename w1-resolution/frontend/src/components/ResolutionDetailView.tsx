@@ -1,7 +1,7 @@
 import React from 'react'
 import { ChevronLeft, CheckCircle2, Trash2, Calendar, Target, Sparkles, TrendingUp, Trophy, Activity, Check } from 'lucide-react'
 import { Button } from './ui/button'
-import { Resolution, Milestone, calculateCadenceProgress } from '../types/resolution'
+import { Resolution, Milestone, Update, calculateCadenceProgress } from '../types/resolution'
 import { getTierInfo } from '../utils/resolutionViz'
 
 // Cadence Progress Section Component
@@ -173,6 +173,87 @@ function ActivityHistorySection({ resolution }: { resolution: Resolution }) {
   )
 }
 
+// Updates History Section Component (for task-based resolutions)
+function UpdatesHistorySection({ resolution }: { resolution: Resolution }) {
+  const updates = resolution.updates || []
+  if (updates.length === 0) return null
+  
+  // Sort by most recent first
+  const recentUpdates = [...updates]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6)
+  
+  const typeConfig: Record<string, { icon: string; color: string }> = {
+    milestone: { icon: '🎯', color: 'bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-400' },
+    progress: { icon: '📈', color: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400' },
+    setback: { icon: '⚠️', color: 'bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-400' },
+    note: { icon: '📝', color: 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' },
+    check_in_response: { icon: '💬', color: 'bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400' }
+  }
+  
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Recent Updates</h3>
+      </div>
+      
+      <div className="space-y-2">
+        {recentUpdates.map((update) => {
+          const date = new Date(update.createdAt)
+          const formattedDate = date.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+          })
+          const config = typeConfig[update.type] || typeConfig.note
+          
+          return (
+            <div 
+              key={update.id}
+              className="flex items-start gap-3 p-2 rounded-lg bg-muted/30"
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-sm ${config.color}`}>
+                {config.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">
+                  {update.content}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground">
+                    {formattedDate}
+                  </span>
+                  {update.progressDelta !== undefined && update.progressDelta > 0 && (
+                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      +{update.progressDelta}%
+                    </span>
+                  )}
+                  {update.sentiment && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      update.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' :
+                      update.sentiment === 'struggling' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' :
+                      'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                    }`}>
+                      {update.sentiment}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        
+        {updates.length > 6 && (
+          <p className="text-xs text-muted-foreground text-center pt-1">
+            + {updates.length - 6} more updates
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 interface ResolutionDetailViewProps {
   resolution: Resolution
   tier: 'immediate' | 'secondary' | 'maintenance'
@@ -204,25 +285,25 @@ export default function ResolutionDetailView({
   }
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full min-h-0 gap-4">
       {/* Breadcrumb */}
       <button
         onClick={onBack}
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit flex-shrink-0"
       >
         <ChevronLeft className="w-4 h-4" />
         <span>Resolutions</span>
       </button>
 
       {/* Header */}
-      <div className="pb-3 border-b">
+      <div className="pb-3 border-b flex-shrink-0">
         <h2 className="text-lg font-semibold">
           {resolution.title}
         </h2>
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto space-y-6">
+      <div className="flex-1 overflow-y-auto space-y-6 min-h-0">
         {/* Tier Badge */}
         <div
           className={`p-3 rounded-lg border space-y-2 ${tierColors[tier]}`}
@@ -260,6 +341,16 @@ export default function ResolutionDetailView({
             </div>
           </div>
         </div>
+
+        {/* Recent Activity (for cadence-based resolutions with completions) - MOVED UP */}
+        {resolution.activityCompletions && resolution.activityCompletions.length > 0 && (
+          <ActivityHistorySection resolution={resolution} />
+        )}
+
+        {/* Recent Updates (for task-based resolutions) - MOVED UP for visibility */}
+        {resolution.updates && resolution.updates.length > 0 && (
+          <UpdatesHistorySection resolution={resolution} />
+        )}
 
         {/* Measurable Criteria */}
         <div className="space-y-3">
@@ -321,11 +412,6 @@ export default function ResolutionDetailView({
           </div>
         </div>
 
-        {/* Recent Activity (if any completions) */}
-        {resolution.activityCompletions && resolution.activityCompletions.length > 0 && (
-          <ActivityHistorySection resolution={resolution} />
-        )}
-
         {/* Tips based on tier */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">Tips</h3>
@@ -356,7 +442,7 @@ export default function ResolutionDetailView({
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-2 pt-4 border-t">
+      <div className="flex gap-2 pt-4 border-t flex-shrink-0">
         {!isCompleted && (
           <Button
             size="sm"
