@@ -82,5 +82,11 @@ ANTHROPIC_API_KEY=your_key_here
 - Academic paper search integrations
 - Source verification tools
 
+## TODO
+- [ ] Export research findings to Figma presentation format (instead of markdown)
+  - Design presentation template in Figma
+  - Build export functionality to generate Figma-compatible JSON
+  - Include research questions, responses, and resources in presentation slides
+
 ## Notes
 (Add your research observations and methodology here)

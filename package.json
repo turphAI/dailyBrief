@@ -10,7 +10,6 @@
     "build:w2": "cd w2-resolution && cd frontend && npm install && npm run build && cd ../..",
     "build:w3": "cd w3-resolution && cd frontend && npm install && npm run build && cd ../..",
     "build:arrange": "bash scripts/arrange-build.sh",
-    "dev": "npm run dev:index",
     "dev:index": "cd index && npm run dev",
     "dev:w1": "cd w1-resolution && vercel dev --yes",
     "dev:w2": "cd w2-resolution/frontend && npm run dev",
