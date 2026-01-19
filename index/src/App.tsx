@@ -21,10 +21,10 @@ export default function App() {
     },
     {
       number: 3,
-      title: 'Week 3 Project',
+      title: 'Deep Research',
       path: '/w3/',
-      description: 'Coming next...',
-      status: 'coming',
+      description: 'AI-assisted deep research tool with Claude',
+      status: 'active',
       url: 'daily-brief-nu.vercel.app/w3/'
     }
   ]
