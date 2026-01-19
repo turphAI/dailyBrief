@@ -2,9 +2,10 @@ import { useState } from 'react'
 import Header from './components/Header'
 import ResearchView from './views/ResearchView'
 import ResourcesView from './views/ResourcesView'
+import PresentationsView from './views/PresentationsView'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocalStorage } from './hooks/useLocalStorage'
-import { Search, Library } from 'lucide-react'
+import { Search, Library, Presentation } from 'lucide-react'
 import type { ResearchSession, Resource } from './types'
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
     topic: 'Generative UI (GenUI)',
     queries: [],
     resources: [],
+    presentations: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   })
@@ -58,7 +60,7 @@ function App() {
         <Tabs defaultValue="research" className="h-full">
           <div className="border-b bg-background/95 backdrop-blur sticky top-0 z-10">
             <div className="max-w-6xl mx-auto px-8">
-              <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsList className="grid w-full max-w-2xl grid-cols-3">
                 <TabsTrigger value="research" className="gap-2">
                   <Search className="w-4 h-4" />
                   Research
@@ -66,6 +68,10 @@ function App() {
                 <TabsTrigger value="resources" className="gap-2">
                   <Library className="w-4 h-4" />
                   Resources ({session.resources.length})
+                </TabsTrigger>
+                <TabsTrigger value="presentations" className="gap-2">
+                  <Presentation className="w-4 h-4" />
+                  Presentations ({session.presentations.length})
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -84,6 +90,12 @@ function App() {
               onAddResource={handleAddResource}
               onRemoveResource={handleRemoveResource}
               onUpdateResource={handleUpdateResource}
+            />
+          </TabsContent>
+
+          <TabsContent value="presentations" className="mt-0 h-full">
+            <PresentationsView
+              presentations={session.presentations}
             />
           </TabsContent>
         </Tabs>

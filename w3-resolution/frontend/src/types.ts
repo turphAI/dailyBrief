@@ -26,12 +26,24 @@ export interface ResearchQuery {
   category?: 'concept' | 'technology' | 'company' | 'implementation' | 'other'
 }
 
+export interface Presentation {
+  id: string
+  title: string
+  version: string
+  targetAudience: string
+  description?: string
+  slides?: any[] // TODO: Define slide structure
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ResearchSession {
   id: string
   topic: string
   description?: string
   queries: ResearchQuery[]
   resources: Resource[]
+  presentations: Presentation[]
   createdAt: string
   updatedAt: string
 }
