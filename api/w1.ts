@@ -17,7 +17,7 @@ import {
   DatabaseError,
   type UserPreferences
 } from './lib/db'
-import { sendSMS, verifySMS } from './lib/sms'
+import { sendSMS } from './lib/sms'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -201,33 +201,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({
           success: false,
           error: 'Failed to send SMS',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
-    }
-
-    if (action === 'sms-verify' && req.method === 'POST') {
-      const { phoneNumber, code } = req.body
-
-      if (!phoneNumber || !code) {
-        return res.status(400).json({
-          error: 'Phone number and code are required'
-        })
-      }
-
-      try {
-        const result = await verifySMS(phoneNumber, code)
-
-        return res.status(200).json({
-          success: result.verified,
-          message: result.verified ? 'Phone verified' : 'Invalid code'
-        })
-      } catch (error) {
-        console.error('[W1 SMS] Error verifying:', error)
-
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to verify SMS',
           details: error instanceof Error ? error.message : 'Unknown error'
         })
       }

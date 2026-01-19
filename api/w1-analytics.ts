@@ -13,7 +13,7 @@ import {
   type Resolution,
   type NudgeRecord,
   type Update
-} from '../../lib/db'
+} from './lib/db'
 
 // ============================================================================
 // Types
