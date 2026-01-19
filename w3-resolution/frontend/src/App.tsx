@@ -9,7 +9,7 @@ import { Search, Library, Presentation } from 'lucide-react'
 import type { ResearchSession, Resource } from './types'
 
 function App() {
-  const [session, setSession] = useLocalStorage<ResearchSession>('deepResearch:session', {
+  const [sessionData, setSessionData] = useLocalStorage<ResearchSession>('deepResearch:session', {
     id: Date.now().toString(),
     topic: 'Generative UI (GenUI)',
     queries: [],
@@ -18,6 +18,19 @@ function App() {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   })
+
+  // Ensure presentations array exists (migration for old data)
+  const session = {
+    ...sessionData,
+    presentations: sessionData.presentations || []
+  }
+
+  const setSession = (newSession: ResearchSession) => {
+    setSessionData({
+      ...newSession,
+      presentations: newSession.presentations || []
+    })
+  }
 
   const updateSession = (updates: Partial<ResearchSession>) => {
     setSession({
