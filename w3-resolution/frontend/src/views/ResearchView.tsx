@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { Send, Loader2, FileText, Lightbulb, Search, Link as LinkIcon, Plus, X, ExternalLink, Menu, ChevronRight } from 'lucide-react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import remarkGfm from 'remark-gfm'
 import type { ResearchQuery, Resource, ResearchSession } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,15 +30,12 @@ const RESOURCE_TYPES = [
   { value: 'other', label: 'Other' }
 ] as const
 
-export default function ResearchView() {
-  const [session, setSession] = useLocalStorage<ResearchSession>('deepResearch:session', {
-    id: Date.now().toString(),
-    topic: 'Generative UI (GenUI)',
-    queries: [],
-    resources: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  })
+interface ResearchViewProps {
+  session: ResearchSession
+  updateSession: (updates: Partial<ResearchSession>) => void
+}
+
+export default function ResearchView({ session, updateSession }: ResearchViewProps) {
 
   const [question, setQuestion] = useState('')
   const [category, setCategory] = useState<'concept' | 'technology' | 'company' | 'implementation' | 'other'>('concept')
@@ -54,14 +51,6 @@ export default function ResearchView() {
 
   // Refs for scrolling
   const queryRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
-
-  const updateSession = (updates: Partial<ResearchSession>) => {
-    setSession({
-      ...session,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
-  }
 
   const handleResearch = async () => {
     if (!question.trim()) return
@@ -393,8 +382,10 @@ export default function ResearchView() {
               </div>
 
               {query.response && (
-                <div className="prose prose-sm max-w-none mt-4 mb-4">
-                  <ReactMarkdown>{query.response}</ReactMarkdown>
+                <div className="prose prose-slate max-w-none mt-6 mb-6">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {query.response}
+                  </ReactMarkdown>
                 </div>
               )}
 

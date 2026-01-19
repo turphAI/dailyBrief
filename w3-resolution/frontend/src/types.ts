@@ -1,10 +1,18 @@
 export interface Resource {
   id: string
-  url: string
+  url?: string
+  file?: {
+    name: string
+    size: number
+    type: string
+    data?: string // base64 encoded file data for small files
+  }
   title?: string
-  type?: 'documentation' | 'article' | 'video' | 'github' | 'paper' | 'other'
+  type?: 'documentation' | 'article' | 'video' | 'github' | 'paper' | 'file' | 'other'
   notes?: string
+  tags?: string[]
   addedAt: string
+  linkedToQuery?: string // Optional link to a specific query
 }
 
 export interface ResearchQuery {
