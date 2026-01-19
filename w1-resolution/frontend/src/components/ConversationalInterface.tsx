@@ -66,7 +66,7 @@ export default function ConversationalInterface({
   useEffect(() => {
     const fetchResolutions = async () => {
       try {
-        const response = await fetch(getApiUrl('/api/chat/resolutions/list/all'))
+        const response = await fetch(getApiUrl('/api/w1?action=resolutions'))
         if (response.ok) {
           const data = await response.json()
           if (data.resolutions && Array.isArray(data.resolutions)) {

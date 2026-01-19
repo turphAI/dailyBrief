@@ -64,7 +64,7 @@ export default function ResearchView({ session, updateSession }: ResearchViewPro
     }
 
     try {
-      const response = await axios.post('/api/research', {
+      const response = await axios.post('/api/w3?action=research', {
         topic: session.topic,
         question: question.trim(),
         context: session.queries.slice(0, 5).map(q => ({

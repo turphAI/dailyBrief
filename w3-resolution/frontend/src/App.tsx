@@ -4,13 +4,21 @@ import ResearchView from './views/ResearchView'
 import ResourcesView from './views/ResourcesView'
 import PresentationsView from './views/PresentationsView'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useLocalStorage } from './hooks/useLocalStorage'
+import { useSession } from './hooks/useSession'
 import { Search, Library, Presentation } from 'lucide-react'
-import type { ResearchSession, Resource } from './types'
+import type { Resource } from './types'
 
 function App() {
-  const [sessionData, setSessionData] = useLocalStorage<ResearchSession>('deepResearch:session', {
-    id: Date.now().toString(),
+  const {
+    session,
+    loading,
+    error,
+    updateSession,
+    addResource,
+    removeResource,
+    updateResource
+  } = useSession('default', {
+    id: 'default',
     topic: 'Generative UI (GenUI)',
     queries: [],
     resources: [],
@@ -19,56 +27,42 @@ function App() {
     updatedAt: new Date().toISOString()
   })
 
-  // Ensure presentations array exists (migration for old data)
-  const session = {
-    ...sessionData,
-    presentations: sessionData.presentations || []
-  }
-
-  const setSession = (newSession: ResearchSession) => {
-    setSessionData({
-      ...newSession,
-      presentations: newSession.presentations || []
-    })
-  }
-
-  const updateSession = (updates: Partial<ResearchSession>) => {
-    setSession({
-      ...session,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
-  }
-
   const handleAddResource = (resource: Omit<Resource, 'id' | 'addedAt'>) => {
     const newResource: Resource = {
       ...resource,
       id: Date.now().toString(),
       addedAt: new Date().toISOString()
     }
-
-    updateSession({
-      resources: [...session.resources, newResource]
-    })
+    addResource(newResource)
   }
 
   const handleRemoveResource = (resourceId: string) => {
-    updateSession({
-      resources: session.resources.filter(r => r.id !== resourceId)
-    })
+    removeResource(resourceId)
   }
 
   const handleUpdateResource = (resourceId: string, updates: Partial<Resource>) => {
-    updateSession({
-      resources: session.resources.map(r =>
-        r.id === resourceId ? { ...r, ...updates } : r
-      )
-    })
+    updateResource(resourceId, updates)
+  }
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading research session...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header />
+      {error && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800">
+          ⚠️ {error} - Your data is safe but may not sync until reconnected.
+        </div>
+      )}
       <main className="flex-1 overflow-auto">
         <Tabs defaultValue="research" className="h-full">
           <div className="border-b bg-background/95 backdrop-blur sticky top-0 z-10">

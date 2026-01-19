@@ -40,7 +40,7 @@ export default function TestingLab() {
     setLoading(true)
 
     try {
-      const response = await axios.post('/api/compare', {
+      const response = await axios.post('/api/w2', {
         prompt: prompt.trim(),
         models
       })
