@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import { Loader2, Send } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Loader2, Send, Download, Upload } from 'lucide-react'
 import axios from 'axios'
 import PromptTestGroup from '../components/PromptTestGroup'
+import { useLocalStorage } from '../hooks/useLocalStorage'
+import { exportToJSON, importFromJSON } from '../utils/dataExport'
 import type { ComparisonResult, ModelRatings } from '../types'
 
 const DEFAULT_MODELS = [
@@ -26,7 +28,11 @@ export default function TestingLab() {
   const [promptType, setPromptType] = useState('coding')
   const [models] = useState<string[]>(DEFAULT_MODELS)
   const [loading, setLoading] = useState(false)
-  const [comparisons, setComparisons] = useState<ComparisonResult[]>([])
+  const [comparisons, setComparisons] = useLocalStorage<ComparisonResult[]>(
+    'modelMapper:comparisons',
+    []
+  )
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleCompare = async () => {
     if (!prompt.trim()) return
@@ -48,10 +54,10 @@ export default function TestingLab() {
         results: response.data.results.map((result: any) => ({
           ...result,
           ratings: {
-            accuracy: undefined,
-            style: undefined,
-            speed: undefined,
-            xFactor: undefined
+            accuracy: 0,
+            style: 0,
+            speed: 0,
+            xFactor: 0
           }
         })),
         expanded: true
@@ -87,11 +93,81 @@ export default function TestingLab() {
     )
   }
 
+  const handleClearAll = () => {
+    if (window.confirm('Are you sure you want to clear all test results? This cannot be undone.')) {
+      setComparisons([])
+    }
+  }
+
+  const handleExport = () => {
+    exportToJSON(comparisons)
+  }
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const data = await importFromJSON(file)
+
+      if (window.confirm(`Import ${data.length} test(s)? This will replace your current data.`)) {
+        setComparisons(data)
+      }
+    } catch (error) {
+      alert(`Failed to import: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Testing Lab</h2>
-        <p className="text-gray-600">Compare AI model responses and capture evaluation metrics</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Testing Lab</h2>
+            <p className="text-gray-600">Compare AI model responses and capture evaluation metrics</p>
+          </div>
+          {comparisons.length > 0 && (
+            <div className="text-right">
+              <p className="text-sm text-gray-500 mb-3">
+                {comparisons.length} test{comparisons.length !== 1 ? 's' : ''} saved
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={handleExport}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                >
+                  <Download className="w-3 h-3" />
+                  Export
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                >
+                  <Upload className="w-3 h-3" />
+                  Import
+                </button>
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  Clear All
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Input Section */}
