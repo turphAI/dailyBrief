@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Presentation, Plus, Users, FilePresentation, Layers } from 'lucide-react'
+import { Presentation, Plus, Users, Monitor, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,7 +32,7 @@ export default function PresentationsView({
       {/* Coming Soon Card */}
       <Card className="border-2 border-dashed">
         <CardContent className="text-center py-16">
-          <FilePresentation className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
+          <Monitor className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
           <h3 className="text-2xl font-semibold mb-3">Presentations Coming Soon</h3>
           <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
             This feature will allow you to create and manage presentations based on your research.
