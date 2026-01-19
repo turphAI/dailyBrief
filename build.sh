@@ -22,16 +22,26 @@ npm install
 npm run build
 cd ../..
 
+# Build w2 frontend
+echo "📦 Building w2 frontend..."
+cd w2-resolution/frontend
+npm install
+npm run build
+cd ../..
+
 # Arrange static files
 echo "📁 Arranging static files..."
 rm -rf public
-mkdir -p public/w1
+mkdir -p public/w1 public/w2
 
 # Copy landing page to root
 cp -r index/dist/* public/
 
 # Copy w1 app
 cp -r w1-resolution/frontend/dist/* public/w1/
+
+# Copy w2 app
+cp -r w2-resolution/frontend/dist/* public/w2/
 
 # Remove favicon link if vite.svg doesn't exist
 if [ ! -f "public/w1/vite.svg" ]; then
@@ -46,9 +56,11 @@ echo "📂 Structure:"
 echo "   public/          - Static files"
 echo "   public/index.html  - Landing page"
 echo "   public/w1/         - Resolution tracker app"
+echo "   public/w2/         - Model Mapper app"
 echo "   api/             - Serverless API functions"
 echo ""
 echo "📡 API endpoints:"
 echo "   POST /api/chat                      - Chat with Claude"
 echo "   GET  /api/chat/resolutions/list/all - List resolutions"
+echo "   POST /api/compare                   - Compare AI models"
 echo "   GET  /api/health                    - Health check"

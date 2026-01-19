@@ -17,6 +17,10 @@
       "destination": "/w1/index.html"
     },
     {
+      "source": "/w2/:path*",
+      "destination": "/w2/index.html"
+    },
+    {
       "source": "/:path*",
       "destination": "/index.html"
     }

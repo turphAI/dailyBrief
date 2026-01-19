@@ -13,10 +13,10 @@ export default function App() {
     },
     {
       number: 2,
-      title: 'Week 2 Project',
+      title: 'Model Mapper',
       path: '/w2/',
-      description: 'Coming next...',
-      status: 'coming',
+      description: 'AI model comparison tool with evaluation metrics',
+      status: 'active',
       url: 'daily-brief-nu.vercel.app/w2/'
     },
     {
