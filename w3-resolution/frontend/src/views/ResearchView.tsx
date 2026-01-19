@@ -38,7 +38,6 @@ interface ResearchViewProps {
 export default function ResearchView({ session, updateSession }: ResearchViewProps) {
 
   const [question, setQuestion] = useState('')
-  const [category, setCategory] = useState<'concept' | 'technology' | 'company' | 'implementation' | 'other'>('concept')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null)
@@ -61,7 +60,6 @@ export default function ResearchView({ session, updateSession }: ResearchViewPro
       id: Date.now().toString(),
       question: question.trim(),
       timestamp: new Date().toISOString(),
-      category,
       resources: []
     }
 
@@ -69,7 +67,6 @@ export default function ResearchView({ session, updateSession }: ResearchViewPro
       const response = await axios.post('/api/research', {
         topic: session.topic,
         question: question.trim(),
-        category,
         context: session.queries.slice(0, 5).map(q => ({
           question: q.question,
           response: q.response
@@ -79,6 +76,7 @@ export default function ResearchView({ session, updateSession }: ResearchViewPro
       const completedQuery: ResearchQuery = {
         ...newQuery,
         response: response.data.response,
+        category: response.data.category, // Auto-detected category from API
         sources: response.data.sources
       }
 
@@ -310,29 +308,6 @@ export default function ResearchView({ session, updateSession }: ResearchViewPro
             <p className="text-xs text-muted-foreground mt-1">
               Press Enter to submit, Shift+Enter for new line
             </p>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
-              Category
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {RESEARCH_CATEGORIES.map((cat) => {
-                const Icon = cat.icon
-                return (
-                  <Button
-                    key={cat.value}
-                    variant={category === cat.value ? "default" : "secondary"}
-                    size="sm"
-                    onClick={() => setCategory(cat.value)}
-                    disabled={loading}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {cat.label}
-                  </Button>
-                )
-              })}
-            </div>
           </div>
 
           <Button
