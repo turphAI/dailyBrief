@@ -15,7 +15,7 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
   useEffect(() => {
     const loadSession = async () => {
       try {
-        const response = await axios.get(`/api/sessions?sessionId=${sessionId}`)
+        const response = await axios.get(`/api/w3?action=sessions&sessionId=${sessionId}`)
         setSession(response.data)
         setError(null)
       } catch (err) {
@@ -53,7 +53,7 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
 
     // Save to API in background
     try {
-      await axios.post('/api/sessions', updatedSession)
+      await axios.post('/api/w3?action=session', updatedSession)
       setError(null)
     } catch (err) {
       console.error('Failed to save session to API:', err)
