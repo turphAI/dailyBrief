@@ -1,12 +1,12 @@
 import { useParams, Navigate } from 'react-router-dom'
 import Header from '../components/Header'
-import WorkingAreaView from './WorkingAreaView'
-import ResearchDocumentView from './ResearchDocumentView'
+import DocumentView from './DocumentView'
 import ResourcesView from './ResourcesView'
 import PresentationsView from './PresentationsView'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSession } from '../hooks/useSession'
-import { MessageSquare, FileText, Library, Presentation } from 'lucide-react'
+import { FileText, Library, Presentation } from 'lucide-react'
+import { getDefaultSkills } from '../lib/defaultSkills'
 import type { Resource } from '../types'
 
 export default function TopicView() {
@@ -31,6 +31,8 @@ export default function TopicView() {
     queries: [],
     resources: [],
     presentations: [],
+    skills: getDefaultSkills(),
+    document: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   })
@@ -50,12 +52,6 @@ export default function TopicView() {
 
   const handleUpdateResource = (resourceId: string, updates: Partial<Resource>) => {
     updateResource(resourceId, updates)
-  }
-
-  const handleRegenerateDocument = async () => {
-    // Trigger document regeneration - the ResearchDocumentView will handle the actual API call
-    // This is just a placeholder for now
-    console.log('Regenerate document triggered')
   }
 
   if (loading) {
@@ -96,14 +92,10 @@ export default function TopicView() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <Tabs defaultValue="working" className="h-full">
+        <Tabs defaultValue="document" className="h-full">
           <div className="border-b bg-background/95 backdrop-blur sticky top-0 z-10">
             <div className="max-w-6xl mx-auto px-8">
-              <TabsList className="grid w-full max-w-3xl grid-cols-4">
-                <TabsTrigger value="working" className="gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  Working
-                </TabsTrigger>
+              <TabsList className="grid w-full max-w-2xl grid-cols-3">
                 <TabsTrigger value="document" className="gap-2">
                   <FileText className="w-4 h-4" />
                   Document
@@ -120,16 +112,11 @@ export default function TopicView() {
             </div>
           </div>
 
-          <TabsContent value="working" className="mt-0 h-full">
-            <WorkingAreaView
+          <TabsContent value="document" className="mt-0 h-full">
+            <DocumentView
               session={session}
               updateSession={updateSession}
-              onRegenerateDocument={handleRegenerateDocument}
             />
-          </TabsContent>
-
-          <TabsContent value="document" className="mt-0 h-full">
-            <ResearchDocumentView session={session} />
           </TabsContent>
 
           <TabsContent value="resources" className="mt-0 h-full">

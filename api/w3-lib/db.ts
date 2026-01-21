@@ -70,6 +70,28 @@ export interface ConversationThread {
   }
 }
 
+export interface SkillParameter {
+  name: string
+  type: 'text' | 'textarea' | 'section-select' | 'keyword' | 'url'
+  required: boolean
+  placeholder?: string
+  description?: string
+}
+
+export interface ResearchSkill {
+  id: string
+  name: string
+  description: string
+  icon: string
+  systemPrompt: string
+  userPromptTemplate: string
+  parameters: SkillParameter[]
+  targetStrategy: 'new-section' | 'append-to-section' | 'insert-at-cursor' | 'replace-selection'
+  enabled: boolean
+  createdAt: string
+  isBuiltIn?: boolean
+}
+
 export interface ResearchSession {
   id: string
   topic: string
@@ -79,6 +101,8 @@ export interface ResearchSession {
   presentations: Presentation[]
   threads?: ConversationThread[]
   messages?: Message[]
+  skills?: ResearchSkill[]
+  document?: string
   createdAt: string
   updatedAt: string
 }

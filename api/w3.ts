@@ -601,6 +601,77 @@ Analyze this thread and provide integration recommendations in JSON format. Focu
     }
 
     // ========================================================================
+    // RUN-SKILL - Execute a research skill
+    // ========================================================================
+
+    if (action === 'run-skill' && req.method === 'POST') {
+      const {
+        sessionId: sid,
+        skillId,
+        skill,
+        topic,
+        description,
+        parameters,
+        documentContext
+      } = req.body
+
+      if (!skill || !topic) {
+        return res.status(400).json({ error: 'Skill and topic are required' })
+      }
+
+      const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+
+      if (!ANTHROPIC_API_KEY) {
+        return res.status(500).json({ error: 'Anthropic API key not configured' })
+      }
+
+      const anthropic = new Anthropic({
+        apiKey: ANTHROPIC_API_KEY
+      })
+
+      // Build user prompt from template by replacing placeholders
+      let userPrompt = skill.userPromptTemplate
+
+      // Replace {topic} placeholder
+      userPrompt = userPrompt.replace(/\{topic\}/g, topic)
+
+      // Replace parameter placeholders
+      for (const [key, value] of Object.entries(parameters)) {
+        const placeholder = `{${key}}`
+        userPrompt = userPrompt.replace(new RegExp(placeholder, 'g'), value as string)
+      }
+
+      // Add document context if available
+      const contextNote = documentContext
+        ? `\n\n## Current Document Context\n${documentContext.substring(0, 2000)}...`
+        : ''
+
+      const finalUserPrompt = userPrompt + contextNote
+
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        system: skill.systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: finalUserPrompt
+          }
+        ]
+      })
+
+      const result = message.content[0].type === 'text'
+        ? message.content[0].text
+        : 'Unable to generate response'
+
+      return res.status(200).json({
+        result,
+        skillId: skill.id,
+        generatedAt: new Date().toISOString()
+      })
+    }
+
+    // ========================================================================
     // HEALTH - Database health check
     // ========================================================================
 

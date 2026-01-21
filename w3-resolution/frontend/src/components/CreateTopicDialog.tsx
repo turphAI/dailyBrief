@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { Card } from './ui/card'
+import { getDefaultSkills } from '../lib/defaultSkills'
 import type { ResearchSession } from '../types'
 
 interface CreateTopicDialogProps {
@@ -39,7 +40,9 @@ export default function CreateTopicDialog({
         description: description.trim() || undefined,
         queries: [],
         resources: [],
-        presentations: []
+        presentations: [],
+        skills: getDefaultSkills(),
+        document: ''
       })
 
       // Close dialog and reset form
