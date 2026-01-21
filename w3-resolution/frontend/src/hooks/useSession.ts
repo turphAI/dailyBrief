@@ -21,7 +21,7 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
       } catch (err) {
         console.error('Failed to load session from API:', err)
         // Try to load from localStorage as fallback
-        const stored = localStorage.getItem(`deepResearch:session`)
+        const stored = localStorage.getItem(`deepResearch:session:${sessionId}`)
         if (stored) {
           try {
             const localSession = JSON.parse(stored)
@@ -48,8 +48,8 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
   const saveSession = useCallback(async (updatedSession: ResearchSession) => {
     setSession(updatedSession)
 
-    // Save to localStorage immediately
-    localStorage.setItem('deepResearch:session', JSON.stringify(updatedSession))
+    // Save to localStorage immediately (using sessionId for multi-session support)
+    localStorage.setItem(`deepResearch:session:${sessionId}`, JSON.stringify(updatedSession))
 
     // Save to API in background
     try {
@@ -59,7 +59,7 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
       console.error('Failed to save session to API:', err)
       setError('Saved locally only (API unavailable)')
     }
-  }, [])
+  }, [sessionId])
 
   // Update session (partial update)
   const updateSession = useCallback((updates: Partial<ResearchSession>) => {
