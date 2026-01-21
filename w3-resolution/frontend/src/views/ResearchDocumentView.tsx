@@ -17,7 +17,12 @@ export default function ResearchDocumentView({ session }: ResearchDocumentViewPr
 
   // Load document on mount or when session changes significantly
   useEffect(() => {
-    if (session.queries.length > 0 || session.resources.length > 0) {
+    const hasContent =
+      session.queries.length > 0 ||
+      session.resources.length > 0 ||
+      (session.threads && session.threads.filter(t => t.status === 'applied').length > 0)
+
+    if (hasContent) {
       loadDocument()
     }
   }, [session.id])
@@ -27,20 +32,37 @@ export default function ResearchDocumentView({ session }: ResearchDocumentViewPr
     setError(null)
 
     try {
-      const response = await axios.post('/api/w3?action=generate-document', {
-        sessionId: session.id,
-        topic: session.topic,
-        description: session.description,
-        queries: session.queries,
-        resources: session.resources,
-        threads: session.threads || []
-      })
+      const response = await axios.post(
+        '/api/w3?action=generate-document',
+        {
+          sessionId: session.id,
+          topic: session.topic,
+          description: session.description,
+          queries: session.queries,
+          resources: session.resources,
+          threads: session.threads || []
+        },
+        {
+          timeout: 60000 // 60 second timeout for document generation
+        }
+      )
 
       setDocument(response.data.document)
       setLastGenerated(new Date().toISOString())
     } catch (err) {
       console.error('Failed to generate document:', err)
-      setError('Failed to generate research document')
+
+      if (axios.isAxiosError(err)) {
+        if (err.code === 'ECONNABORTED') {
+          setError('Document generation timed out - try with fewer queries/threads')
+        } else if (err.response?.status === 500) {
+          setError('Server error generating document')
+        } else {
+          setError('Failed to generate research document')
+        }
+      } else {
+        setError('Failed to generate research document')
+      }
 
       // Fallback to basic document structure
       generateFallbackDocument()
@@ -100,15 +122,18 @@ export default function ResearchDocumentView({ session }: ResearchDocumentViewPr
   }
 
   // Show empty state if no content
-  if (!loading && session.queries.length === 0 && session.resources.length === 0) {
+  const hasAppliedThreads = session.threads && session.threads.filter(t => t.status === 'applied').length > 0
+  const hasContent = session.queries.length > 0 || session.resources.length > 0 || hasAppliedThreads
+
+  if (!loading && !hasContent) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-md px-4">
           <FileText className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-semibold mb-2">No Research Yet</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Start by asking questions in the Working Area or adding resources. Your research
-            document will automatically generate as you work.
+            Start by asking questions in the Working Area, create and apply conversation threads,
+            or add resources. Your research document will automatically generate as you work.
           </p>
           <Button onClick={loadDocument} disabled={loading}>
             Generate Document

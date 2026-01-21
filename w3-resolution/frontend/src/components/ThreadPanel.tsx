@@ -134,7 +134,17 @@ export default function ThreadPanel({
             <div className="text-center py-8 text-sm text-muted-foreground">
               <Circle className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p>No threads yet</p>
-              <p className="text-xs mt-1">Create threads to organize your research</p>
+              <p className="text-xs mt-1 mb-3">Create threads to organize your research</p>
+              {messages.length > 1 && (
+                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded p-3 text-left">
+                  <p className="text-xs font-medium text-blue-900 dark:text-blue-100 mb-1">
+                    💡 You have {messages.length} messages
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    Click "+ New Thread" below to organize them into a focused thread, then analyze and apply to your document.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

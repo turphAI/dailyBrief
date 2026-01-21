@@ -49,7 +49,15 @@ export default async function handler(
     // ========================================================================
 
     if (action === 'research' && req.method === 'POST') {
-      const { topic, question, context = [] } = req.body
+      const {
+        topic,
+        question,
+        description,
+        context = [],
+        threadContext = null,
+        appliedThreads = [],
+        inThread = false
+      } = req.body
 
       if (!topic || !question) {
         return res.status(400).json({ error: 'Topic and question are required' })
@@ -97,45 +105,73 @@ Respond with ONLY the category name (concept, technology, company, implementatio
       const validCategories = ['concept', 'technology', 'company', 'implementation', 'other']
       const category = validCategories.includes(detectedCategory) ? detectedCategory : 'other'
 
-      // Build context from previous queries
-      const contextStr = context.length > 0
-        ? `\n\nPrevious research context:\n${context.map((c: any, i: number) =>
-            `${i + 1}. Q: ${c.question}\n   A: ${c.response.substring(0, 200)}...`
+      // Build conversation history (use thread-specific if in thread)
+      const conversationHistory = (inThread && threadContext) ? threadContext : context
+      const conversationMessages = conversationHistory.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content
+      }))
+
+      // Build context from applied threads
+      const appliedThreadsContext = appliedThreads.length > 0
+        ? `\n\n## Previously Researched Topics (Applied Threads)\n${appliedThreads.map((t: any) =>
+            `### ${t.title}\n${t.summary || 'No summary available'}`
           ).join('\n\n')}`
         : ''
 
-      const systemPrompt = `You are an expert researcher helping to conduct deep research on the topic: "${topic}".
+      // Build comprehensive system prompt
+      let systemPrompt = `You are an expert AI researcher conducting deep, focused research on a specific topic. Your role is to help build comprehensive knowledge through iterative conversation and research.
 
-Your task is to provide comprehensive, well-researched answers that:
-- Are accurate and fact-based
-- Include multiple perspectives when relevant
-- Cite key concepts, companies, or technologies
-- Explain technical terms clearly
-- Provide context and examples
-- Suggest related areas to explore
+## Research Topic
+**${topic}**
+${description ? `\n**Description**: ${description}\n` : ''}
 
-This question has been categorized as: ${category}
+## Your Task
+Provide comprehensive, well-researched answers that:
+- Stay strictly focused on the research topic: "${topic}"
+- Build upon previous conversation context (if provided)
+- Are accurate, fact-based, and include citations when relevant
+- Include multiple perspectives when appropriate
+- Explain technical terms clearly with examples
+- Suggest related areas to explore within this topic
+- Use concrete examples and case studies
+- Identify key concepts, technologies, and companies
 
-Format your response in clear markdown with:
-- Headers for main sections
+## Question Category
+This question has been categorized as: **${category}**
+
+## Knowledge Integration
+${inThread ? '**Note**: You are in a focused conversation thread. Build upon the thread context to develop deeper understanding.' : 'You may reference previously researched topics when relevant, but stay focused on the current question.'}
+${appliedThreadsContext}
+
+## Response Format
+Use clear markdown formatting:
+- Headers (##, ###) for main sections
 - Bullet points for lists
-- Code blocks for technical examples
-- Bold for key terms${contextStr}`
+- Code blocks with language tags for technical examples
+- **Bold** for key terms and concepts
+- > Blockquotes for important callouts or definitions
 
-      const message = await anthropic.messages.create({
+Keep responses comprehensive but focused. Aim for depth over breadth.`
+
+      // Build messages array with conversation history
+      const messages = [
+        ...conversationMessages,
+        {
+          role: 'user' as const,
+          content: question
+        }
+      ]
+
+      const completion = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
+        max_tokens: 3000,
         system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: question
-          }
-        ]
+        messages: messages
       })
 
-      const response = message.content[0].type === 'text'
-        ? message.content[0].text
+      const response = completion.content[0].type === 'text'
+        ? completion.content[0].text
         : 'Unable to generate response'
 
       return res.status(200).json({
@@ -188,34 +224,68 @@ Format your response in clear markdown with:
           ).join('\n')
         : ''
 
-      const systemPrompt = `You are an expert technical writer and researcher. Your task is to create a comprehensive, well-structured research document.
+      const systemPrompt = `You are an expert technical writer and researcher specializing in synthesizing research into comprehensive, educational documentation.
 
-The document should:
-- Start with a clear executive summary
-- Be organized with clear sections and subsections
-- Synthesize information from conversation threads, queries, and resources
-- Use markdown formatting (headers, lists, code blocks, emphasis)
-- Include concrete examples and explanations
-- Highlight key concepts, technologies, and companies
-- Be coherent and flow naturally (not just a Q&A list)
-- Be suitable for both learning and reference
+## Your Task
+Create a well-structured research document that serves as both a learning resource and technical reference.
 
-IMPORTANT: Prioritize content from applied conversation threads (already synthesized) over raw Q&A queries.
+## Document Requirements
 
-Format: Use proper markdown with ## for main sections, ### for subsections, bullet points, code blocks, etc.`
+### Structure
+- **Executive Summary**: Concise overview of the topic, key insights, and what the document covers
+- **Logical Organization**: Group related concepts into thematic sections
+- **Progressive Depth**: Start with fundamentals, build to advanced topics
+- **Clear Hierarchy**: Use ## for major sections, ### for subsections, #### for detailed points
 
-      const userPrompt = `Generate a comprehensive research document on the topic: **${topic}**
+### Content Quality
+- **Synthesis Over Summation**: Integrate information from multiple sources into coherent narratives
+- **Concrete Examples**: Include real-world examples, code snippets, case studies
+- **Technical Accuracy**: Cite specific technologies, companies, methodologies
+- **Actionable Insights**: Explain not just "what" but "why" and "how"
+- **Balanced Perspective**: Include tradeoffs, challenges, and alternative approaches when relevant
 
-${description ? `Description: ${description}\n` : ''}
-${threadsContext ? `\n## Applied Research Threads (Priority Content)\n\n${threadsContext}\n` : ''}
-${queriesContext ? `\n## Additional Research Queries\n\n${queriesContext}\n` : ''}
-${resourcesContext ? `\n## Additional Resources\n\n${resourcesContext}\n` : ''}
+### Formatting
+- Use markdown effectively: headers, **bold** for key terms, \`code\`, code blocks with language tags
+- Include > blockquotes for important callouts or definitions
+- Use bullet points for lists, numbered lists for sequences
+- Add horizontal rules (---) between major sections if needed
 
-Based on the above information, create a well-structured research document that synthesizes everything into a cohesive, educational document. Prioritize the applied threads content (already in prose form) and integrate any additional queries/resources that add value. Organize information thematically into logical sections.`
+## Content Priority
+1. **Applied Thread Content** (highest priority): Already synthesized prose from focused conversations
+2. **Research Queries**: Raw Q&A that adds value not covered in threads
+3. **Resources**: Citations and references that support the content
+
+## Critical Guidelines
+- NEVER use Q&A format in the final document
+- Transform conversations into educational prose
+- Connect ideas across different threads and queries
+- Eliminate redundancy - synthesize overlapping content
+- Maintain consistent terminology throughout
+- Write for someone learning the topic from scratch`
+
+      const userPrompt = `# Research Topic: ${topic}
+${description ? `\n**Context**: ${description}\n` : ''}
+
+${threadsContext ? `## Applied Research Threads\nThe following sections contain synthesized research from focused conversation threads. Use this as your primary content source:\n\n${threadsContext}\n\n` : ''}
+${queriesContext ? `## Additional Research Questions & Answers\nThese Q&A pairs provide supplementary information. Integrate relevant insights into your document:\n\n${queriesContext}\n\n` : ''}
+${resourcesContext ? `## Referenced Resources\nCite these resources where relevant:\n\n${resourcesContext}\n\n` : ''}
+
+---
+
+**Your Task**: Create a comprehensive, well-structured research document on "${topic}".
+
+**Structure Guidance**:
+1. Start with an Executive Summary
+2. Organize content thematically (not chronologically or by source)
+3. Build from foundational concepts to advanced topics
+4. Include concrete examples and practical applications
+5. End with conclusions or future directions
+
+**Remember**: This document should teach someone about ${topic} in a coherent, engaging way. Transform the raw research into polished, educational content.`
 
       const message = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 8000, // Increased for comprehensive documents
         system: systemPrompt,
         messages: [
           {
@@ -240,10 +310,23 @@ Based on the above information, create a well-structured research document that 
     // ========================================================================
 
     if (action === 'analyze-thread' && req.method === 'POST') {
-      const { sessionId: sid, threadId, messages: threadMessages = [], existingDocument = '' } = req.body
+      const {
+        sessionId: sid,
+        threadId,
+        threadTitle,
+        topic,
+        description,
+        messages: threadMessages = [],
+        existingDocument = '',
+        appliedThreads = []
+      } = req.body
 
       if (!threadMessages || threadMessages.length === 0) {
         return res.status(400).json({ error: 'Thread messages are required' })
+      }
+
+      if (!topic) {
+        return res.status(400).json({ error: 'Topic is required' })
       }
 
       const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
@@ -268,35 +351,60 @@ Based on the above information, create a well-structured research document that 
         .map(line => line.replace(/^##\s*/, ''))
         .join(', ')
 
-      const systemPrompt = `You are a research document architect. Analyze a conversation thread and determine how to integrate it into a research document.
+      // Build context from other applied threads
+      const otherThreadsContext = appliedThreads.length > 0
+        ? `\n\n## Other Applied Threads\n${appliedThreads
+            .filter((t: any) => t.id !== threadId)
+            .map((t: any) => `- ${t.title}: ${t.summary || 'No summary'}`)
+            .join('\n')}`
+        : ''
 
-Your task:
-1. Read the conversation thread chronologically
-2. Identify the core topic/question being explored
-3. Track how understanding evolved through the conversation
-4. Extract the final conclusions and key insights
-5. Synthesize into coherent, well-written prose (NOT Q&A format)
-6. Determine where this fits in the existing document structure
+      const systemPrompt = `You are a research document architect specializing in synthesizing research conversations into structured documentation.
 
-Respond with JSON containing:
+## Research Context
+**Topic**: ${topic}
+${description ? `**Description**: ${description}` : ''}
+**Thread Title**: ${threadTitle || 'Untitled Thread'}
+
+## Your Task
+Analyze this focused conversation thread and determine how to integrate it into a comprehensive research document. Remember:
+
+1. **Read Chronologically**: Understand how the conversation evolved and what was discovered
+2. **Identify Core Insights**: Extract key learnings, patterns, and conclusions
+3. **Synthesize Into Prose**: Convert Q&A into coherent, well-written narrative
+4. **Consider Context**: How does this relate to existing document content and other threads?
+5. **Structure Thoughtfully**: Determine the best place and format for this content
+
+## Integration Strategies
+- **new-section**: Create a new section when the thread explores a distinct subtopic
+- **merge-existing**: Merge into an existing section when it expands on covered material
+
+## Output Format
+Respond with JSON:
 {
-  "summary": "Brief description of what this thread explores (1-2 sentences)",
-  "insights": ["Key insight 1", "Key insight 2", ...],
+  "summary": "1-2 sentence summary of what this thread explores and concludes",
+  "insights": ["Key insight 1", "Key insight 2", "Key insight 3"],
   "integrationStrategy": "new-section" | "merge-existing",
-  "targetSection": "Section name if merging, null for new section",
-  "proposedContent": "Markdown content to add (coherent prose, not Q&A)",
-  "reasoning": "Brief explanation of your integration strategy"
+  "targetSection": "Existing section name (if merging) or suggested section name (if new)",
+  "proposedContent": "Well-written markdown prose (NOT Q&A format)",
+  "reasoning": "Brief explanation of your integration strategy and how it fits the topic"
 }
 
-IMPORTANT: proposedContent should be well-written prose that synthesizes the conversation into a coherent narrative. Include markdown formatting (headers, lists, code blocks as needed).`
+**CRITICAL**: The proposedContent must be:
+- Coherent narrative prose, NOT Q&A format
+- Well-structured with headers (###), lists, code blocks as appropriate
+- Focused on insights and learnings, not conversation mechanics
+- Written for a reader who wants to learn about the topic
+- Comprehensive enough to stand alone or enhance existing content`
 
-      const userPrompt = `## Existing Document Sections
-${documentSections || 'No existing sections'}
+      const userPrompt = `## Existing Document Structure
+${documentSections ? `Current Sections: ${documentSections}` : 'No existing document sections'}
+${otherThreadsContext}
 
-## Conversation Thread
+## Conversation Thread to Analyze
 ${conversationContext}
 
-Analyze this thread and provide integration recommendations in JSON format.`
+Analyze this thread and provide integration recommendations in JSON format. Focus on synthesizing the conversation into valuable content for a research document on "${topic}".`
 
       const message = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',

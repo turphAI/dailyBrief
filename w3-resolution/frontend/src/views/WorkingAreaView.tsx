@@ -75,13 +75,45 @@ export default function WorkingAreaView({
     setLoading(true)
 
     try {
+      // If in a thread, use only that thread's messages for context
+      let conversationContext = messages.slice(-5)
+      let threadSpecificContext = null
+
+      if (activeThreadId) {
+        const thread = threads.find(t => t.id === activeThreadId)
+        if (thread) {
+          // Get messages from this thread only
+          const threadMessages = thread.messageIds
+            .map(id => messages.find(m => m.id === id))
+            .filter(Boolean) as Message[]
+
+          conversationContext = threadMessages
+          threadSpecificContext = threadMessages.map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        }
+      }
+
+      // Get applied threads for context
+      const appliedThreads = threads
+        .filter(t => t.status === 'applied')
+        .map(t => ({
+          title: t.title,
+          summary: t.summary
+        }))
+
       const response = await axios.post('/api/w3?action=research', {
         topic: session.topic,
+        description: session.description,
         question: userMessage.content,
-        context: messages.slice(-5).map(m => ({
+        context: conversationContext.map(m => ({
           role: m.role,
           content: m.content
-        }))
+        })),
+        threadContext: threadSpecificContext,
+        appliedThreads,
+        inThread: !!activeThreadId
       })
 
       const assistantMessage: Message = {
@@ -184,11 +216,24 @@ export default function WorkingAreaView({
         .map(id => messages.find(m => m.id === id))
         .filter(Boolean)
 
+      // Get other applied threads for context
+      const otherAppliedThreads = threads
+        .filter(t => t.status === 'applied' && t.id !== threadId)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          summary: t.summary
+        }))
+
       const response = await axios.post('/api/w3?action=analyze-thread', {
         sessionId: session.id,
         threadId,
+        threadTitle: thread.title,
+        topic: session.topic,
+        description: session.description,
         messages: threadMessages,
-        existingDocument: '' // We'll fetch this from the document view later
+        existingDocument: '', // TODO: Fetch current document if we want to parse sections
+        appliedThreads: otherAppliedThreads
       })
 
       // Update thread with analysis
