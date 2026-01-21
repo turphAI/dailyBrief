@@ -28,22 +28,38 @@ export function useTopics(): UseTopicsReturn {
       // Response is an array of sessions
       const sessionsList = Array.isArray(response.data) ? response.data : []
 
+      // Ensure arrays exist for all sessions (migration safety)
+      const normalizedSessions = sessionsList.map((s: ResearchSession) => ({
+        ...s,
+        presentations: s.presentations || [],
+        threads: s.threads || [],
+        messages: s.messages || []
+      }))
+
       // Sort by most recent first
-      const sortedSessions = sessionsList.sort((a: ResearchSession, b: ResearchSession) =>
+      const sortedSessions = normalizedSessions.sort((a: ResearchSession, b: ResearchSession) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       )
 
       setTopics(sortedSessions)
-    } catch (err) {
-      console.error('[useTopics] Failed to load topics:', err)
 
-      // Fallback: Try to load from localStorage
+      // Cache all sessions in localStorage for offline viewing (read-only)
+      sortedSessions.forEach(session => {
+        localStorage.setItem(`deepResearch:session:${session.id}`, JSON.stringify(session))
+      })
+
+      setError(null)
+    } catch (err) {
+      console.error('[useTopics] Failed to load topics from database:', err)
+
+      // Show cached data if available, but warn user
       const localTopics = loadTopicsFromLocalStorage()
       if (localTopics.length > 0) {
         setTopics(localTopics)
-        setError('Using offline mode - topics loaded from local storage')
+        setError('⚠️ Database unavailable - viewing cached topics (changes will not be saved)')
       } else {
-        setError('Failed to load topics')
+        setTopics([])
+        setError('⚠️ Database unavailable - cannot load topics')
       }
     } finally {
       setLoading(false)
@@ -91,14 +107,16 @@ export function useTopics(): UseTopicsReturn {
       updatedAt: now,
       queries: topicData.queries || [],
       resources: topicData.resources || [],
-      presentations: topicData.presentations || []
+      presentations: topicData.presentations || [],
+      threads: topicData.threads || [],
+      messages: topicData.messages || []
     }
 
     try {
-      // Save to API
+      // Save to database first (source of truth)
       await axios.post('/api/w3?action=session', newSession)
 
-      // Save to localStorage immediately
+      // Only cache in localStorage after successful database save
       localStorage.setItem(`deepResearch:session:${newId}`, JSON.stringify(newSession))
 
       // Update local state
@@ -106,33 +124,25 @@ export function useTopics(): UseTopicsReturn {
 
       return newId
     } catch (err) {
-      console.error('[useTopics] Failed to create topic:', err)
-
-      // Still save locally even if API fails
-      localStorage.setItem(`deepResearch:session:${newId}`, JSON.stringify(newSession))
-      setTopics(prev => [newSession, ...prev])
-
-      return newId
+      console.error('[useTopics] Failed to create topic in database:', err)
+      throw new Error('Failed to create topic - database unavailable')
     }
   }, [])
 
   // Delete topic
   const deleteTopic = useCallback(async (topicId: string) => {
     try {
-      // Delete from API
+      // Delete from database first (source of truth)
       await axios.delete(`/api/w3?action=session&sessionId=${topicId}`)
 
-      // Remove from localStorage
+      // Only remove from cache after successful database deletion
       localStorage.removeItem(`deepResearch:session:${topicId}`)
 
       // Update local state
       setTopics(prev => prev.filter(t => t.id !== topicId))
     } catch (err) {
-      console.error('[useTopics] Failed to delete topic:', err)
-
-      // Still remove locally even if API fails
-      localStorage.removeItem(`deepResearch:session:${topicId}`)
-      setTopics(prev => prev.filter(t => t.id !== topicId))
+      console.error('[useTopics] Failed to delete topic from database:', err)
+      throw new Error('Failed to delete topic - database unavailable')
     }
   }, [])
 
@@ -155,10 +165,10 @@ export function useTopics(): UseTopicsReturn {
         updatedAt: new Date().toISOString()
       }
 
-      // Save to API
+      // Save to database first (source of truth)
       await axios.post('/api/w3?action=session', updatedSession)
 
-      // Save to localStorage
+      // Only cache after successful database save
       localStorage.setItem(`deepResearch:session:${topicId}`, JSON.stringify(updatedSession))
 
       // Update local state
@@ -167,8 +177,8 @@ export function useTopics(): UseTopicsReturn {
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       )
     } catch (err) {
-      console.error('[useTopics] Failed to update topic metadata:', err)
-      throw err
+      console.error('[useTopics] Failed to update topic metadata in database:', err)
+      throw new Error('Failed to update topic - database unavailable')
     }
   }, [topics])
 

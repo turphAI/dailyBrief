@@ -49,6 +49,27 @@ export interface Presentation {
   updatedAt: string
 }
 
+export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface ConversationThread {
+  id: string
+  title: string
+  messageIds: string[]
+  createdAt: string
+  status: 'draft' | 'applied' | 'archived'
+  summary?: string
+  appliedAt?: string
+  documentImpact?: {
+    section: string
+    preview: string
+  }
+}
+
 export interface ResearchSession {
   id: string
   topic: string
@@ -56,6 +77,8 @@ export interface ResearchSession {
   queries: ResearchQuery[]
   resources: Resource[]
   presentations: Presentation[]
+  threads?: ConversationThread[]
+  messages?: Message[]
   createdAt: string
   updatedAt: string
 }

@@ -492,6 +492,20 @@ Analyze this thread and provide integration recommendations in JSON format.`
       }
     }
 
+    // ========================================================================
+    // HEALTH - Database health check
+    // ========================================================================
+
+    if (action === 'health' && req.method === 'GET') {
+      const { checkHealth } = await import('./w3-lib/db')
+      const health = await checkHealth()
+
+      return res.status(health.connected ? 200 : 503).json({
+        database: health,
+        timestamp: new Date().toISOString()
+      })
+    }
+
     return res.status(400).json({ error: 'Invalid action or method' })
 
   } catch (error) {

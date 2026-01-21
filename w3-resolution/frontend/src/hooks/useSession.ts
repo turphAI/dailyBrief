@@ -16,26 +16,46 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
     const loadSession = async () => {
       try {
         const response = await axios.get(`/api/w3?action=sessions&sessionId=${sessionId}`)
-        setSession(response.data)
+        const loadedSession = response.data
+
+        // Ensure arrays exist (migration safety)
+        loadedSession.presentations = loadedSession.presentations || []
+        loadedSession.threads = loadedSession.threads || []
+        loadedSession.messages = loadedSession.messages || []
+
+        setSession(loadedSession)
+
+        // Cache in localStorage for offline access (read-only)
+        localStorage.setItem(`deepResearch:session:${sessionId}`, JSON.stringify(loadedSession))
+
         setError(null)
       } catch (err) {
-        console.error('Failed to load session from API:', err)
-        // Try to load from localStorage as fallback
-        const stored = localStorage.getItem(`deepResearch:session:${sessionId}`)
-        if (stored) {
-          try {
-            const localSession = JSON.parse(stored)
-            // Ensure presentations array exists (migration)
-            localSession.presentations = localSession.presentations || []
-            setSession(localSession)
-          } catch (e) {
-            console.error('Failed to parse localStorage session:', e)
-            setSession(defaultSession)
-          }
-        } else {
+        console.error('Failed to load session from database:', err)
+
+        // If session doesn't exist in database, create it
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
           setSession(defaultSession)
+          setError(null)
+        } else {
+          // For other errors, show error but allow viewing cached data
+          const stored = localStorage.getItem(`deepResearch:session:${sessionId}`)
+          if (stored) {
+            try {
+              const cachedSession = JSON.parse(stored)
+              cachedSession.presentations = cachedSession.presentations || []
+              cachedSession.threads = cachedSession.threads || []
+              cachedSession.messages = cachedSession.messages || []
+              setSession(cachedSession)
+              setError('⚠️ Database unavailable - viewing cached data (changes will not be saved)')
+            } catch (e) {
+              setSession(defaultSession)
+              setError('⚠️ Database unavailable and no cached data')
+            }
+          } else {
+            setSession(defaultSession)
+            setError('⚠️ Database unavailable - cannot load session')
+          }
         }
-        setError('Using local storage (API unavailable)')
       } finally {
         setLoading(false)
       }
@@ -44,20 +64,27 @@ export function useSession(sessionId: string, defaultSession: ResearchSession) {
     loadSession()
   }, [sessionId])
 
-  // Save session to both API and localStorage
+  // Save session to database (localStorage only as cache)
   const saveSession = useCallback(async (updatedSession: ResearchSession) => {
+    // Optimistically update local state
     setSession(updatedSession)
 
-    // Save to localStorage immediately (using sessionId for multi-session support)
-    localStorage.setItem(`deepResearch:session:${sessionId}`, JSON.stringify(updatedSession))
-
-    // Save to API in background
     try {
+      // Save to database first (source of truth)
       await axios.post('/api/w3?action=session', updatedSession)
+
+      // Only cache in localStorage after successful database save
+      localStorage.setItem(`deepResearch:session:${sessionId}`, JSON.stringify(updatedSession))
+
       setError(null)
     } catch (err) {
-      console.error('Failed to save session to API:', err)
-      setError('Saved locally only (API unavailable)')
+      console.error('Failed to save session to database:', err)
+
+      // Revert optimistic update on failure
+      setError('⚠️ Failed to save changes - database unavailable')
+
+      // Don't update localStorage if database save failed
+      throw err
     }
   }, [sessionId])
 
