@@ -47,7 +47,7 @@ export default function DocumentEditor({
   if (mode === 'display') {
     // Display mode - rendered markdown (read-only)
     return (
-      <div className="h-full w-full prose prose-sm dark:prose-invert max-w-none">
+      <div className="prose prose-sm dark:prose-invert max-w-none">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {content}
         </ReactMarkdown>

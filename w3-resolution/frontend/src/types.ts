@@ -80,6 +80,17 @@ export interface ResearchSkill {
   isBuiltIn?: boolean
 }
 
+export interface WorkingBlock {
+  id: string
+  title: string
+  content: string
+  skillId: string
+  skillName: string
+  parameters: Record<string, string>
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ResearchSession {
   id: string
   topic: string
@@ -92,6 +103,7 @@ export interface ResearchSession {
   skills?: ResearchSkill[]
   document?: string  // The actual markdown document content
   skillRunsSinceOrganize?: number  // Counter for hint system
+  workingBlocks?: WorkingBlock[]  // Scratchpad for skill outputs
   createdAt: string
   updatedAt: string
 }

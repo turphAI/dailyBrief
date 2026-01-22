@@ -92,6 +92,17 @@ export interface ResearchSkill {
   isBuiltIn?: boolean
 }
 
+export interface WorkingBlock {
+  id: string
+  title: string
+  content: string
+  skillId: string
+  skillName: string
+  parameters: Record<string, string>
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ResearchSession {
   id: string
   topic: string
@@ -104,6 +115,7 @@ export interface ResearchSession {
   skills?: ResearchSkill[]
   document?: string
   skillRunsSinceOrganize?: number
+  workingBlocks?: WorkingBlock[]
   createdAt: string
   updatedAt: string
 }

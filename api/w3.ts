@@ -676,6 +676,89 @@ Analyze this thread and provide integration recommendations in JSON format. Focu
     }
 
     // ========================================================================
+    // REFINE-BLOCK - Conversational refinement for working blocks
+    // ========================================================================
+
+    if (action === 'refine-block' && req.method === 'POST') {
+      const {
+        sessionId: sid,
+        blockId,
+        topic,
+        currentContent,
+        userMessage,
+        conversationHistory = []
+      } = req.body
+
+      if (!topic || !currentContent || !userMessage) {
+        return res.status(400).json({ error: 'Topic, content, and message are required' })
+      }
+
+      const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+
+      if (!ANTHROPIC_API_KEY) {
+        return res.status(500).json({ error: 'Anthropic API key not configured' })
+      }
+
+      const anthropic = new Anthropic({
+        apiKey: ANTHROPIC_API_KEY
+      })
+
+      const systemPrompt = `You are an expert research assistant helping to refine and improve content for a research document about "${topic}".
+
+Your role is to:
+- Help the user iterate on their content through conversation
+- Provide suggestions, improvements, and refinements based on their requests
+- When you provide revised content, mark your response with a clear indication that it can be applied
+- Be concise and focused - the user wants quick iterations
+
+Current content being refined:
+${currentContent}
+
+When the user asks you to revise, rewrite, or improve the content, provide the complete revised version clearly. Keep your responses focused and actionable.`
+
+      // Build conversation messages
+      const messages: any[] = []
+
+      // Add conversation history
+      for (const msg of conversationHistory) {
+        messages.push({
+          role: msg.role,
+          content: msg.content
+        })
+      }
+
+      // Add current user message
+      messages.push({
+        role: 'user',
+        content: userMessage
+      })
+
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages
+      })
+
+      const response = message.content[0].type === 'text'
+        ? message.content[0].text
+        : 'Unable to generate response'
+
+      // Simple heuristic: if user asked to change/improve and response looks like content, mark as applyable
+      const revisionKeywords = ['make', 'change', 'improve', 'rewrite', 'revise', 'shorten', 'expand', 'add', 'remove', 'concise']
+      const askedForRevision = revisionKeywords.some(keyword =>
+        userMessage.toLowerCase().includes(keyword)
+      )
+      const looksLikeContent = response.length > 100 && !response.toLowerCase().startsWith('here')
+
+      return res.status(200).json({
+        response,
+        canApply: askedForRevision && looksLikeContent,
+        generatedAt: new Date().toISOString()
+      })
+    }
+
+    // ========================================================================
     // HEALTH - Database health check
     // ========================================================================
 

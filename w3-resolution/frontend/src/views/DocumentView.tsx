@@ -39,7 +39,7 @@ export default function DocumentView({
     setSkillDialogOpen(true)
   }
 
-  const handleExecuteSkill = async (parameters: Record<string, string>) => {
+  const handleExecuteSkill = async (parameters: Record<string, string>, destination: 'working' | 'document') => {
     if (!selectedSkill) return
 
     try {
@@ -61,53 +61,91 @@ export default function DocumentView({
 
       const result = response.data.result
 
-      // Insert result into document based on target strategy
-      let updatedDocument = document
+      if (destination === 'working') {
+        // Generate title from content or parameters
+        let title = ''
 
-      switch (selectedSkill.targetStrategy) {
-        case 'new-section':
-          // Append to end of document with spacing
-          updatedDocument = document
-            ? `${document}\n\n---\n\n${result}`
-            : result
-          break
+        // Try to use the main parameter value (first parameter)
+        const firstParam = Object.values(parameters)[0]
+        if (firstParam && typeof firstParam === 'string') {
+          title = firstParam.slice(0, 60)
+        }
 
-        case 'append-to-section':
-          // Append to end (TODO: implement section selection in future)
-          updatedDocument = document
-            ? `${document}\n\n${result}`
-            : result
-          break
+        // Fallback: extract from first line of content
+        if (!title) {
+          const firstLine = result.split('\n')[0].replace(/^#+\s*/, '').trim()
+          title = firstLine.slice(0, 60)
+        }
 
-        case 'replace-selection':
-          // Replace entire document (used by Organize & Consolidate)
-          updatedDocument = result
-          break
+        // Final fallback: use skill name
+        if (!title) {
+          title = selectedSkill.name
+        }
 
-        case 'insert-at-cursor':
-          // For now, append to end (TODO: implement cursor position tracking)
-          updatedDocument = document
-            ? `${document}\n\n${result}`
-            : result
-          break
-      }
+        // Add to working blocks
+        const newBlock = {
+          id: Date.now().toString(),
+          title,
+          content: result,
+          skillId: selectedSkill.id,
+          skillName: selectedSkill.name,
+          parameters,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
 
-      // Track skill runs for hint system
-      let newSkillRunCount = skillRunsSinceOrganize
-
-      if (selectedSkill.id === 'organize-document') {
-        // Reset counter when organizing
-        newSkillRunCount = 0
-        setHintDismissed(false)
+        updateSession({
+          workingBlocks: [...(session.workingBlocks || []), newBlock]
+        })
       } else {
-        // Increment counter for content skills
-        newSkillRunCount = skillRunsSinceOrganize + 1
-      }
+        // Insert result into document based on target strategy
+        let updatedDocument = document
 
-      updateSession({
-        document: updatedDocument,
-        skillRunsSinceOrganize: newSkillRunCount
-      })
+        switch (selectedSkill.targetStrategy) {
+          case 'new-section':
+            // Append to end of document with spacing
+            updatedDocument = document
+              ? `${document}\n\n---\n\n${result}`
+              : result
+            break
+
+          case 'append-to-section':
+            // Append to end (TODO: implement section selection in future)
+            updatedDocument = document
+              ? `${document}\n\n${result}`
+              : result
+            break
+
+          case 'replace-selection':
+            // Replace entire document (used by Organize & Consolidate)
+            updatedDocument = result
+            break
+
+          case 'insert-at-cursor':
+            // For now, append to end (TODO: implement cursor position tracking)
+            updatedDocument = document
+              ? `${document}\n\n${result}`
+              : result
+            break
+        }
+
+        // Track skill runs for hint system
+        let newSkillRunCount = skillRunsSinceOrganize
+
+        if (selectedSkill.id === 'organize-document') {
+          // Reset counter when organizing
+          newSkillRunCount = 0
+          setHintDismissed(false)
+        } else {
+          // Increment counter for content skills
+          newSkillRunCount = skillRunsSinceOrganize + 1
+        }
+
+        updateSession({
+          document: updatedDocument,
+          skillRunsSinceOrganize: newSkillRunCount
+        })
+      }
     } catch (error) {
       console.error('Failed to run skill:', error)
       throw error

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
@@ -6,11 +6,34 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Loader2 } from 'lucide-react'
 import type { ResearchSkill } from '../types'
 
+function AutoExpandingTextarea({ value, onChange, placeholder }: { value: string, onChange: (value: string) => void, placeholder?: string }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${Math.max(textarea.scrollHeight, 60)}px`
+    }
+  }, [value])
+
+  return (
+    <Textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="resize-none overflow-hidden"
+      style={{ minHeight: '60px' }}
+    />
+  )
+}
+
 interface RunSkillDialogProps {
   skill: ResearchSkill | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onRun: (parameters: Record<string, string>) => Promise<void>
+  onRun: (parameters: Record<string, string>, destination: 'working' | 'document') => Promise<void>
 }
 
 export default function RunSkillDialog({
@@ -20,6 +43,7 @@ export default function RunSkillDialog({
   onRun
 }: RunSkillDialogProps) {
   const [parameters, setParameters] = useState<Record<string, string>>({})
+  const [destination, setDestination] = useState<'working' | 'document'>('working')
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,9 +64,10 @@ export default function RunSkillDialog({
     setError(null)
 
     try {
-      await onRun(parameters)
+      await onRun(parameters, destination)
       onOpenChange(false)
       setParameters({})
+      setDestination('working')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run skill')
     } finally {
@@ -53,6 +78,7 @@ export default function RunSkillDialog({
   const handleCancel = () => {
     onOpenChange(false)
     setParameters({})
+    setDestination('working')
     setError(null)
   }
 
@@ -68,6 +94,36 @@ export default function RunSkillDialog({
         </SheetHeader>
 
         <div className="space-y-4 py-6">
+          {/* Destination Selection */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Output Destination</label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={destination === 'working' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setDestination('working')}
+                className="flex-1"
+              >
+                Working Space
+              </Button>
+              <Button
+                type="button"
+                variant={destination === 'document' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setDestination('document')}
+                className="flex-1"
+              >
+                Document
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {destination === 'working'
+                ? 'Send to Working Space to refine before adding to document'
+                : 'Add directly to your document'}
+            </p>
+          </div>
+
           {skill.parameters.map(param => (
             <div key={param.name} className="space-y-2">
               <label className="text-sm font-medium">
@@ -77,26 +133,14 @@ export default function RunSkillDialog({
               {param.description && (
                 <p className="text-xs text-muted-foreground">{param.description}</p>
               )}
-              {param.type === 'textarea' ? (
-                <Textarea
-                  value={parameters[param.name] || ''}
-                  onChange={(e) => setParameters(prev => ({
-                    ...prev,
-                    [param.name]: e.target.value
-                  }))}
-                  placeholder={param.placeholder}
-                  rows={4}
-                />
-              ) : (
-                <Input
-                  value={parameters[param.name] || ''}
-                  onChange={(e) => setParameters(prev => ({
-                    ...prev,
-                    [param.name]: e.target.value
-                  }))}
-                  placeholder={param.placeholder}
-                />
-              )}
+              <AutoExpandingTextarea
+                value={parameters[param.name] || ''}
+                onChange={(value) => setParameters(prev => ({
+                  ...prev,
+                  [param.name]: value
+                }))}
+                placeholder={param.placeholder}
+              />
             </div>
           ))}
 
