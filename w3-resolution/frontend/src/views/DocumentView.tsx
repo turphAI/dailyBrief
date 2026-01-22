@@ -66,15 +66,19 @@ export default function DocumentView({
           break
 
         case 'append-to-section':
-          // For now, append to end (TODO: implement section selection)
+          // Append to end (TODO: implement section selection in future)
           updatedDocument = document
             ? `${document}\n\n${result}`
             : result
           break
 
-        case 'insert-at-cursor':
         case 'replace-selection':
-          // For now, append to end (TODO: implement cursor position)
+          // Replace entire document (used by Organize & Consolidate)
+          updatedDocument = result
+          break
+
+        case 'insert-at-cursor':
+          // For now, append to end (TODO: implement cursor position tracking)
           updatedDocument = document
             ? `${document}\n\n${result}`
             : result

@@ -229,6 +229,47 @@ Format as an organized markdown section with proper links (use placeholder URLs)
     enabled: true,
     createdAt: new Date().toISOString(),
     isBuiltIn: true
+  },
+  {
+    id: 'organize-document',
+    name: 'Organize & Consolidate',
+    description: 'Reorganize the entire document with proper structure, remove redundancy, and improve flow',
+    icon: '📝',
+    systemPrompt: `You are an expert technical editor and document architect. Your task is to take an existing research document and reorganize it into a coherent, well-structured document.
+
+Your reorganization should:
+- Create a logical information architecture (Executive Summary → Core Concepts → Details → Advanced Topics → Resources)
+- Group related content into thematic sections
+- Remove redundancy and consolidate overlapping information
+- Ensure smooth transitions between sections
+- Add an Executive Summary if missing
+- Use clear hierarchical structure (##, ###, ####)
+- Maintain all important content (don't remove valuable information)
+- Improve readability and flow
+
+CRITICAL: Return the ENTIRE reorganized document, not just changes. The output will replace the current document.`,
+    userPromptTemplate: `Reorganize and consolidate the following research document on "{topic}":
+
+{currentDocument}
+
+---
+
+Tasks:
+1. Analyze the content and identify main themes
+2. Create a logical structure with clear sections
+3. Remove redundancy where content overlaps
+4. Consolidate similar concepts into coherent sections
+5. Add an Executive Summary at the top if missing
+6. Ensure proper markdown hierarchy (##, ###, ####)
+7. Improve transitions and flow between sections
+8. Preserve all valuable information and examples
+
+Return the COMPLETE reorganized document in markdown format. This will replace the current document entirely.`,
+    parameters: [],
+    targetStrategy: 'replace-selection',
+    enabled: true,
+    createdAt: new Date().toISOString(),
+    isBuiltIn: true
   }
 ]
 

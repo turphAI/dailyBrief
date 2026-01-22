@@ -635,22 +635,26 @@ Analyze this thread and provide integration recommendations in JSON format. Focu
       // Replace {topic} placeholder
       userPrompt = userPrompt.replace(/\{topic\}/g, topic)
 
+      // Replace {currentDocument} placeholder (for document organization skills)
+      if (documentContext) {
+        userPrompt = userPrompt.replace(/\{currentDocument\}/g, documentContext)
+      }
+
       // Replace parameter placeholders
       for (const [key, value] of Object.entries(parameters)) {
         const placeholder = `{${key}}`
         userPrompt = userPrompt.replace(new RegExp(placeholder, 'g'), value as string)
       }
 
-      // Add document context if available
-      const contextNote = documentContext
-        ? `\n\n## Current Document Context\n${documentContext.substring(0, 2000)}...`
-        : ''
+      const finalUserPrompt = userPrompt
 
-      const finalUserPrompt = userPrompt + contextNote
+      // Determine max tokens based on skill type
+      // Organize & Consolidate needs more tokens to return full document
+      const maxTokens = skill.id === 'organize-document' ? 8000 : 4000
 
       const message = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: maxTokens,
         system: skill.systemPrompt,
         messages: [
           {
