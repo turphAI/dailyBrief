@@ -35,29 +35,24 @@ export default function SkillsPanel({
 
       {/* Skills List */}
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-3">
+        <div className="p-2 space-y-1">
           {enabledSkills.map(skill => (
             <div
               key={skill.id}
-              className="bg-background rounded-lg border p-3 hover:border-primary/50 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-md transition-colors"
             >
-              <div className="flex items-start gap-3">
-                <div className="text-2xl flex-shrink-0">{skill.icon}</div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-sm mb-1">{skill.name}</h4>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    {skill.description}
-                  </p>
-                  <Button
-                    onClick={() => onRunSkill(skill)}
-                    size="sm"
-                    className="w-full gap-2"
-                  >
-                    <Play className="w-3 h-3" />
-                    Run Skill
-                  </Button>
-                </div>
-              </div>
+              <span className="flex-1 text-sm font-medium truncate">
+                {skill.name}
+              </span>
+              <Button
+                onClick={() => onRunSkill(skill)}
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 gap-1 flex-shrink-0"
+              >
+                <Play className="w-3 h-3" />
+                Run
+              </Button>
             </div>
           ))}
 

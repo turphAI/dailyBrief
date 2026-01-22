@@ -5,7 +5,7 @@ import SkillsPanel from '../components/SkillsPanel'
 import RunSkillDialog from '../components/RunSkillDialog'
 import { getDefaultSkills } from '../lib/defaultSkills'
 import { Button } from '../components/ui/button'
-import { Sparkles, X } from 'lucide-react'
+import { Sparkles, X, ALargeSmall, Hash } from 'lucide-react'
 import type { ResearchSession, ResearchSkill } from '../types'
 
 interface DocumentViewProps {
@@ -24,6 +24,7 @@ export default function DocumentView({
   const [selectedSkill, setSelectedSkill] = useState<ResearchSkill | null>(null)
   const [skillDialogOpen, setSkillDialogOpen] = useState(false)
   const [hintDismissed, setHintDismissed] = useState(false)
+  const [viewMode, setViewMode] = useState<'display' | 'markdown'>('display')
 
   const skillRunsSinceOrganize = session.skillRunsSinceOrganize || 0
   const shouldShowHint = skillRunsSinceOrganize >= 3 && !hintDismissed
@@ -129,11 +130,31 @@ export default function DocumentView({
     <div className="h-full flex bg-background">
       {/* Document Editor (Left - Main Area) */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="border-b p-4">
-          <h2 className="text-xl font-semibold">Research Document</h2>
-          <p className="text-sm text-muted-foreground">
-            Run skills to enhance your document, or edit directly
-          </p>
+        <div className="border-b p-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Research Document</h2>
+            <p className="text-sm text-muted-foreground">
+              Run skills to enhance your document, or edit directly
+            </p>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant={viewMode === 'display' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('display')}
+              className="h-8 w-8 p-0"
+            >
+              <ALargeSmall className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'markdown' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('markdown')}
+              className="h-8 w-8 p-0"
+            >
+              <Hash className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Organization Hint */}
@@ -171,6 +192,7 @@ export default function DocumentView({
             <DocumentEditor
               content={document}
               onChange={handleDocumentChange}
+              mode={viewMode}
             />
           </div>
         </div>

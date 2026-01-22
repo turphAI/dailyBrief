@@ -1,17 +1,21 @@
 import { useRef, useEffect } from 'react'
 import { Textarea } from './ui/textarea'
 import { FileText } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface DocumentEditorProps {
   content: string
   onChange: (content: string) => void
   placeholder?: string
+  mode?: 'display' | 'markdown'
 }
 
 export default function DocumentEditor({
   content,
   onChange,
-  placeholder = "# Your Research Document\n\nStart by running a skill from the right panel, or type here to add your own content..."
+  placeholder = "# Your Research Document\n\nStart by running a skill from the right panel, or type here to add your own content...",
+  mode = 'display'
 }: DocumentEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -24,8 +28,8 @@ export default function DocumentEditor({
     }
   }, [content])
 
-  if (!content && !onChange) {
-    // Read-only empty state
+  if (!content) {
+    // Empty state
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-md px-4">
@@ -33,13 +37,25 @@ export default function DocumentEditor({
           <h3 className="text-lg font-semibold mb-2">No Document Yet</h3>
           <p className="text-sm text-muted-foreground">
             Run a research skill from the right panel to start building your document,
-            or start typing to add your own content.
+            or switch to markdown mode to start typing.
           </p>
         </div>
       </div>
     )
   }
 
+  if (mode === 'display') {
+    // Display mode - rendered markdown (read-only)
+    return (
+      <div className="h-full w-full prose prose-sm dark:prose-invert max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {content}
+        </ReactMarkdown>
+      </div>
+    )
+  }
+
+  // Markdown mode - editable textarea
   return (
     <div className="h-full w-full">
       <Textarea
