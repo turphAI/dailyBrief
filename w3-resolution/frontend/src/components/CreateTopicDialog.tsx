@@ -42,7 +42,8 @@ export default function CreateTopicDialog({
         resources: [],
         presentations: [],
         skills: getDefaultSkills(),
-        document: ''
+        document: '',
+        skillRunsSinceOrganize: 0
       })
 
       // Close dialog and reset form

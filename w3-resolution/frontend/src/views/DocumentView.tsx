@@ -4,6 +4,8 @@ import DocumentEditor from '../components/DocumentEditor'
 import SkillsPanel from '../components/SkillsPanel'
 import RunSkillDialog from '../components/RunSkillDialog'
 import { getDefaultSkills } from '../lib/defaultSkills'
+import { Button } from '../components/ui/button'
+import { Sparkles, X } from 'lucide-react'
 import type { ResearchSession, ResearchSkill } from '../types'
 
 interface DocumentViewProps {
@@ -21,6 +23,10 @@ export default function DocumentView({
 
   const [selectedSkill, setSelectedSkill] = useState<ResearchSkill | null>(null)
   const [skillDialogOpen, setSkillDialogOpen] = useState(false)
+  const [hintDismissed, setHintDismissed] = useState(false)
+
+  const skillRunsSinceOrganize = session.skillRunsSinceOrganize || 0
+  const shouldShowHint = skillRunsSinceOrganize >= 3 && !hintDismissed
 
   const handleDocumentChange = async (newContent: string) => {
     // Optimistically update
@@ -85,7 +91,22 @@ export default function DocumentView({
           break
       }
 
-      updateSession({ document: updatedDocument })
+      // Track skill runs for hint system
+      let newSkillRunCount = skillRunsSinceOrganize
+
+      if (selectedSkill.id === 'organize-document') {
+        // Reset counter when organizing
+        newSkillRunCount = 0
+        setHintDismissed(false)
+      } else {
+        // Increment counter for content skills
+        newSkillRunCount = skillRunsSinceOrganize + 1
+      }
+
+      updateSession({
+        document: updatedDocument,
+        skillRunsSinceOrganize: newSkillRunCount
+      })
     } catch (error) {
       console.error('Failed to run skill:', error)
       throw error
@@ -95,6 +116,13 @@ export default function DocumentView({
   const handleManageSkills = () => {
     // TODO: Open skill management dialog
     console.log('Manage skills')
+  }
+
+  const handleRunOrganizeSkill = () => {
+    const organizeSkill = skills.find(s => s.id === 'organize-document')
+    if (organizeSkill) {
+      handleRunSkill(organizeSkill)
+    }
   }
 
   return (
@@ -107,6 +135,37 @@ export default function DocumentView({
             Run skills to enhance your document, or edit directly
           </p>
         </div>
+
+        {/* Organization Hint */}
+        {shouldShowHint && (
+          <div className="bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800 px-4 py-3 flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                Document could use organization
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                You've run {skillRunsSinceOrganize} skills. Consider running "Organize & Consolidate" to structure your document.
+              </p>
+            </div>
+            <Button
+              onClick={handleRunOrganizeSkill}
+              size="sm"
+              variant="default"
+              className="flex-shrink-0"
+            >
+              Organize Now
+            </Button>
+            <Button
+              onClick={() => setHintDismissed(true)}
+              size="sm"
+              variant="ghost"
+              className="flex-shrink-0 h-8 w-8 p-0"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-4xl mx-auto">
             <DocumentEditor

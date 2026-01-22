@@ -103,6 +103,7 @@ export interface ResearchSession {
   messages?: Message[]
   skills?: ResearchSkill[]
   document?: string
+  skillRunsSinceOrganize?: number
   createdAt: string
   updatedAt: string
 }

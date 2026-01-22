@@ -33,6 +33,7 @@ export default function TopicView() {
     presentations: [],
     skills: getDefaultSkills(),
     document: '',
+    skillRunsSinceOrganize: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   })

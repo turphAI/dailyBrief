@@ -91,6 +91,7 @@ export interface ResearchSession {
   messages?: Message[]
   skills?: ResearchSkill[]
   document?: string  // The actual markdown document content
+  skillRunsSinceOrganize?: number  // Counter for hint system
   createdAt: string
   updatedAt: string
 }
